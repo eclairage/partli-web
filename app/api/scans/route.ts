@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin, getUserFromRequest } from "@/lib/supabase";
 import { sendSms, SMS } from "@/lib/twilio";
 import { notifyOps } from "@/lib/notify";
 
 export async function POST(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const body = await req.json().catch(() => null);
 
   if (!body?.room_data) {
     return NextResponse.json({ error: "room_data is required" }, { status: 400 });
   }
 
-  // Must have either a job_id (installer flow) or homeowner_id (homeowner self-scan flow)
   if (!body?.job_id && !body?.homeowner_id) {
     return NextResponse.json(
       { error: "job_id or homeowner_id is required" },
@@ -21,10 +23,16 @@ export async function POST(req: NextRequest) {
   const db = supabaseAdmin();
   let notifyName = "unknown";
 
-  // Installer / job flow
+  // Installer / job flow — caller must be an installer
   if (body.job_id) {
+    if (user.app_metadata?.role !== "installer") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
     if (!body.phase) {
-      return NextResponse.json({ error: "phase is required when job_id is provided" }, { status: 400 });
+      return NextResponse.json(
+        { error: "phase is required when job_id is provided" },
+        { status: 400 }
+      );
     }
 
     const { data: job, error: jobErr } = await db
@@ -39,17 +47,23 @@ export async function POST(req: NextRequest) {
     notifyName = `${job.name} — ${body.phase}`;
   }
 
-  // Homeowner self-scan flow (original)
+  // Homeowner self-scan flow — caller must own this homeowner profile
   if (body.homeowner_id && !body.job_id) {
     const { data: homeowner, error: hwErr } = await db
       .from("homeowners")
-      .select("id, name, phone")
+      .select("id, user_id, name, phone")
       .eq("id", body.homeowner_id)
       .single();
 
     if (hwErr || !homeowner) {
       return NextResponse.json({ error: "homeowner not found" }, { status: 404 });
     }
+
+    // Verify the authenticated user owns this homeowner profile
+    if (homeowner.user_id !== user.id) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
     notifyName = homeowner.name;
     await sendSms(homeowner.phone, SMS.scanReceived()).catch(console.error);
   }

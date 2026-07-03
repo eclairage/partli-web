@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import type { Drawings, FloorPlan, WallElevation } from "@/lib/roomplan";
 import type { Annotation } from "@/lib/supabase";
+import { createAnnotation, deleteAnnotation } from "@/lib/ops-actions";
 
 interface PendingPin {
   target: string;
@@ -262,32 +263,22 @@ function WallElevationSvg({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export default function DrawingsPanel({ scanId }: { scanId: string }) {
-  const [drawings, setDrawings] = useState<Drawings | null>(null);
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+export default function DrawingsPanel({
+  scanId,
+  initialDrawings,
+  initialAnnotations,
+}: {
+  scanId: string;
+  initialDrawings: Drawings;
+  initialAnnotations: Annotation[];
+}) {
+  const [drawings] = useState<Drawings>(initialDrawings);
+  const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
   const [tab, setTab] = useState("floor_plan");
   const [pending, setPending] = useState<PendingPin | null>(null);
   const [draftText, setDraftText] = useState("");
   const [draftAuthor, setDraftAuthor] = useState("");
   const [saving, setSaving] = useState(false);
-  const [noDrawings, setNoDrawings] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/scans/${scanId}/drawings`).then(async (r) => {
-      if (r.status === 422) { setNoDrawings(true); return; }
-      setDrawings(await r.json());
-    });
-    fetch(`/api/scans/${scanId}/annotations`)
-      .then((r) => r.json())
-      .then((d) => setAnnotations(d.annotations ?? []));
-  }, [scanId]);
-
-  // Close popover on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setPending(null); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
 
   const handleSvgClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>, target: string, wallHeight?: number) => {
@@ -309,38 +300,24 @@ export default function DrawingsPanel({ scanId }: { scanId: string }) {
   const saveAnnotation = async () => {
     if (!pending || !draftText.trim()) return;
     setSaving(true);
-    const res = await fetch(`/api/scans/${scanId}/annotations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target: pending.target, x: pending.x, y: pending.y, text: draftText, author: draftAuthor }),
+    const result = await createAnnotation(scanId, {
+      target: pending.target,
+      x: pending.x,
+      y: pending.y,
+      text: draftText,
+      author: draftAuthor,
     });
-    if (res.ok) {
-      setAnnotations((await res.json()).annotations);
+    if ("annotations" in result) {
+      setAnnotations(result.annotations);
       setPending(null);
     }
     setSaving(false);
   };
 
-  const deleteAnnotation = async (id: string) => {
-    const res = await fetch(`/api/scans/${scanId}/annotations/${id}`, { method: "DELETE" });
-    if (res.ok) setAnnotations((await res.json()).annotations);
+  const handleDeleteAnnotation = async (id: string) => {
+    const result = await deleteAnnotation(scanId, id);
+    if ("annotations" in result) setAnnotations(result.annotations);
   };
-
-  if (noDrawings) {
-    return (
-      <section className="rounded-lg border border-slate-200 p-5 text-sm text-slate-400">
-        Drawings unavailable — scan predates transform support. Rescan to generate floor plan and elevations.
-      </section>
-    );
-  }
-
-  if (!drawings) {
-    return (
-      <section className="rounded-lg border border-slate-200 p-5 text-sm text-slate-400 animate-pulse">
-        Loading drawings…
-      </section>
-    );
-  }
 
   const tabs = ["floor_plan", ...drawings.wall_elevations.map((_, i) => `wall_${i}`)];
   const tabLabel = (t: string) =>
@@ -455,7 +432,7 @@ export default function DrawingsPanel({ scanId }: { scanId: string }) {
                     <p className="text-slate-800 break-words">{a.text}</p>
                   </div>
                   <button
-                    onClick={() => deleteAnnotation(a.id)}
+                    onClick={() => handleDeleteAnnotation(a.id)}
                     className="shrink-0 text-slate-300 hover:text-red-400 leading-none mt-0.5"
                     title="Delete"
                   >

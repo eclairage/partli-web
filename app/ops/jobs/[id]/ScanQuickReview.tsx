@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { approveScan } from "@/lib/ops-actions";
 
 type ScanStatus = "pending" | "approved" | "flagged";
 
@@ -13,18 +14,14 @@ interface Props {
 export default function ScanQuickReview({ scanId, status: initialStatus }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<ScanStatus>(initialStatus);
-  const [busy, setBusy]     = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  async function review(next: ScanStatus) {
-    if (busy || next === status) return;
+  async function handleApprove() {
+    if (busy || status === "approved") return;
     setBusy(true);
-    const res = await fetch(`/api/scans/${scanId}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: next, ops_note: "" }),
-    });
-    if (res.ok) {
-      setStatus(next);
+    const result = await approveScan(scanId);
+    if ("ok" in result) {
+      setStatus("approved");
       router.refresh();
     }
     setBusy(false);
@@ -33,7 +30,7 @@ export default function ScanQuickReview({ scanId, status: initialStatus }: Props
   return (
     <div className="flex items-center gap-2">
       <button
-        onClick={() => review("approved")}
+        onClick={handleApprove}
         disabled={busy}
         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
           status === "approved"
@@ -43,17 +40,17 @@ export default function ScanQuickReview({ scanId, status: initialStatus }: Props
       >
         ✓ Approve
       </button>
-      <button
-        onClick={() => review("flagged")}
-        disabled={busy}
+      {/* Full review (with required note) is handled on the scan detail page */}
+      <a
+        href={`/ops/scans/${scanId}`}
         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
           status === "flagged"
             ? "bg-red-100 text-red-700 border border-red-200"
             : "border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-600"
         }`}
       >
-        ✗ Flag
-      </button>
+        {status === "flagged" ? "✗ Flagged" : "✗ Flag"}
+      </a>
       {status === "pending" && (
         <span className="text-xs text-amber-600 font-medium">Pending review</span>
       )}

@@ -3,8 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { computeDrawings, RoomData } from "@/lib/roomplan";
 
 // GET /api/scans/:id/drawings
-// Returns computed floor plan and wall elevations from the scan's room_data.
-// Requires the scan to have been submitted with transform data (Path A format).
+// Auth is enforced at the middleware layer for /api/scans/:id/* routes.
+// Note: the ops web UI now computes drawings server-side in the page component
+// rather than fetching this endpoint from the browser.
 
 export async function GET(
   _req: NextRequest,
@@ -29,7 +30,6 @@ export async function GET(
     return NextResponse.json({ error: "scan has no room data" }, { status: 422 });
   }
 
-  // Detect scans submitted before Path A (no transform on walls)
   const hasTransforms = room.walls?.length > 0 && Array.isArray(room.walls[0]?.transform);
   if (!hasTransforms) {
     return NextResponse.json(

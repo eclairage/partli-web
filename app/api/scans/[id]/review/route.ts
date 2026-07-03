@@ -2,21 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendSms, SMS } from "@/lib/twilio";
 
-function verifyOpsAuth(req: NextRequest): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  const [scheme, token] = auth.split(" ");
-  if (scheme !== "Bearer") return false;
-  return token === process.env.OPS_PASSWORD;
-}
+// Auth is enforced at the middleware layer for /api/scans/:id/* routes.
+// The ops web UI now calls reviewScan() from lib/ops-actions.ts (server action)
+// rather than hitting this endpoint from the browser.
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!verifyOpsAuth(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
   const { id } = await params;
   const body = await req.json().catch(() => null);
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { Annotation } from "@/lib/supabase";
 
+// Auth is enforced at the middleware layer for /api/scans/:id/* routes.
+
 // DELETE /api/scans/:id/annotations/:annotationId
 export async function DELETE(
   _req: NextRequest,

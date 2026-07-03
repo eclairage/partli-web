@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { reviewScan } from "@/lib/ops-actions";
 
 export default function ReviewForm({ scanId }: { scanId: string }) {
   const router = useRouter();
@@ -20,20 +21,16 @@ export default function ReviewForm({ scanId }: { scanId: string }) {
     setLoading(true);
     setError("");
 
-    const res = await fetch(`/api/scans/${scanId}/review`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${prompt("Enter ops password") ?? ""}`,
-      },
-      body: JSON.stringify({ status, ops_note: note, reviewed_by: reviewedBy }),
+    const result = await reviewScan(scanId, {
+      status,
+      ops_note: note,
+      reviewed_by: reviewedBy,
     });
 
-    if (res.ok) {
+    if ("ok" in result) {
       router.refresh();
     } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Something went wrong.");
+      setError(result.error ?? "Something went wrong.");
     }
     setLoading(false);
   }

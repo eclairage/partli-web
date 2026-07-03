@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { updateJobStatus } from "@/lib/ops-actions";
 
 type JobStatus = "active" | "completed" | "archived";
 
@@ -38,13 +39,9 @@ export default function JobStatusForm({ jobId, currentStatus, currentNote }: Pro
     setError("");
     setSaved(false);
 
-    const res = await fetch(`/api/jobs/${jobId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, ops_note: note || null }),
-    });
+    const result = await updateJobStatus(jobId, { status, ops_note: note || null });
 
-    if (res.ok) {
+    if ("ok" in result) {
       setSaved(true);
       router.refresh();
     } else {
@@ -59,7 +56,6 @@ export default function JobStatusForm({ jobId, currentStatus, currentNote }: Pro
         Ops Actions
       </h2>
 
-      {/* Status picker */}
       <div className="flex gap-2">
         {STATUS_OPTIONS.map((opt) => (
           <button
@@ -76,7 +72,6 @@ export default function JobStatusForm({ jobId, currentStatus, currentNote }: Pro
         ))}
       </div>
 
-      {/* Ops note */}
       <div>
         <label className="text-xs text-slate-500 mb-1 block">Ops note</label>
         <textarea

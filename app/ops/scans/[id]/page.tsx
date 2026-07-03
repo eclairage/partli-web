@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import type { Scan, RoomData, IntakeData } from "@/lib/supabase";
+import type { Scan, RoomData, IntakeData, Annotation } from "@/lib/supabase";
+import { computeDrawings } from "@/lib/roomplan";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReviewForm from "./ReviewForm";
@@ -52,6 +53,11 @@ export default async function ScanDetailPage({
   const room = scan.room_data as RoomData | null;
   const pathRoom = scan.path_room_data as RoomData | null;
   const intake = scan.intake_data as IntakeData | null;
+  const initialAnnotations = (scan.annotations as Annotation[]) ?? [];
+  const initialDrawings =
+    room && Array.isArray(room.walls?.[0]?.transform)
+      ? computeDrawings(room)
+      : null;
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 space-y-8 w-full">
@@ -142,8 +148,12 @@ export default async function ScanDetailPage({
       )}
 
       {/* Drawings — only rendered when scan has transform data (Path A+) */}
-      {room?.walls?.[0]?.transform && (
-        <DrawingsPanel scanId={id} />
+      {initialDrawings && (
+        <DrawingsPanel
+          scanId={id}
+          initialDrawings={initialDrawings}
+          initialAnnotations={initialAnnotations}
+        />
       )}
 
       {/* Photos */}

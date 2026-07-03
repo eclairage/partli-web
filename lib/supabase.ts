@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import type { NextRequest } from "next/server";
 
 export type ScanStatus = "pending" | "approved" | "flagged";
 export type JobStatus = "active" | "completed" | "archived";
@@ -90,7 +91,9 @@ export interface Annotation {
   created_at: string;
 }
 
-export const supabase = createClient(
+// Named `supabasePublic` to make it obvious this uses the anon (public) key.
+// Only use this in client-side code. All server routes must use supabaseAdmin().
+export const supabasePublic = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
@@ -100,3 +103,21 @@ export const supabaseAdmin = () =>
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+
+/**
+ * Verifies the Bearer token in the request and returns the full Supabase user,
+ * or null if the token is missing / invalid. Includes app_metadata for role checks.
+ */
+export async function getUserFromRequest(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7);
+  const { data: { user }, error } = await supabaseAdmin().auth.getUser(token);
+  if (error || !user) return null;
+  return user;
+}
+
+export async function getUserIdFromRequest(req: NextRequest): Promise<string | null> {
+  const user = await getUserFromRequest(req);
+  return user?.id ?? null;
+}

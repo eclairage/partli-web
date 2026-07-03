@@ -3,8 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import type { Annotation } from "@/lib/supabase";
 import { randomUUID } from "crypto";
 
-// NOTE: Run this migration in Supabase before deploying:
-//   ALTER TABLE scans ADD COLUMN IF NOT EXISTS annotations JSONB DEFAULT '[]';
+// Auth is enforced at the middleware layer for /api/scans/:id/* routes.
+// These endpoints are only called from ops server actions (server-side), not from the browser.
 
 // GET /api/scans/:id/annotations
 export async function GET(

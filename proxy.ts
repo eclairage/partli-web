@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Verify a Supabase JWT by calling the /auth/v1/user endpoint.
-// This adds ~100-200ms latency per protected request; acceptable for MVP.
+// Next.js 16: this file must be named proxy.ts and export `proxy` (not `middleware`).
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aLen = a.length;
+  const bLen = b.length;
+  let mismatch = aLen !== bLen ? 1 : 0;
+  const len = Math.min(aLen, bLen);
+  for (let i = 0; i < len; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
 async function verifySupabaseJWT(token: string): Promise<boolean> {
   try {
     const res = await fetch(
@@ -20,17 +31,20 @@ async function verifySupabaseJWT(token: string): Promise<boolean> {
   }
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const opsPassword = process.env.OPS_PASSWORD ?? "";
 
   // ── Ops admin: HTTP Basic Auth ─────────────────────────────────────────────
   if (pathname.startsWith("/ops")) {
     const auth = req.headers.get("authorization") ?? "";
-    const [scheme, encoded] = auth.split(" ");
-    if (scheme === "Basic" && encoded) {
-      const decoded = atob(encoded);
-      const [, password] = decoded.split(":");
-      if (password === process.env.OPS_PASSWORD) return NextResponse.next();
+    if (auth.startsWith("Basic ")) {
+      const decoded = atob(auth.slice(6));
+      const colonIdx = decoded.indexOf(":");
+      const password = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : "";
+      if (opsPassword && timingSafeStringEqual(password, opsPassword)) {
+        return NextResponse.next();
+      }
     }
     return new NextResponse("Unauthorized", {
       status: 401,
@@ -39,17 +53,34 @@ export async function middleware(req: NextRequest) {
   }
 
   // ── iOS-facing API routes: Supabase JWT ────────────────────────────────────
-  // Protect job listing/detail and scan submission.
-  // Leave /api/scans/:id/* open — ops web admin client components call those
-  // from the browser without a JWT (the /ops page itself is Basic-Auth gated).
   const isJobsRoute =
     pathname === "/api/jobs" || /^\/api\/jobs\/[^/]+$/.test(pathname);
   const isScanSubmit = pathname === "/api/scans" && req.method === "POST";
+  const isMeRoute = pathname === "/api/me";
+  const isHomeownersRoute = pathname === "/api/homeowners";
 
-  if (isJobsRoute || isScanSubmit) {
+  if (isJobsRoute || isScanSubmit || isMeRoute || isHomeownersRoute) {
     const auth = req.headers.get("authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
     if (token && (await verifySupabaseJWT(token))) return NextResponse.next();
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ── Ops API routes: Bearer OPS_PASSWORD ───────────────────────────────────
+  // These are called server-side via server actions, not from the browser.
+  // This guard is defense in depth against direct HTTP access.
+  const isOpsApiRoute = /^\/api\/scans\/[^/]+(\/annotations(\/[^/]+)?|\/drawings|\/review)?$/.test(pathname);
+
+  if (isOpsApiRoute) {
+    const auth = req.headers.get("authorization") ?? "";
+    if (auth.startsWith("Bearer ")) {
+      const token = auth.slice(7).trim();
+      if (opsPassword && timingSafeStringEqual(token, opsPassword)) {
+        return NextResponse.next();
+      }
+      // Also accept a valid Supabase JWT for future mobile use
+      if (await verifySupabaseJWT(token)) return NextResponse.next();
+    }
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

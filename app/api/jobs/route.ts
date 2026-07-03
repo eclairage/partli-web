@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin, getUserFromRequest } from "@/lib/supabase";
 
-// GET /api/jobs — list active jobs (used by iOS app to populate job list)
-export async function GET() {
+// GET /api/jobs — list active jobs (installer only)
+export async function GET(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (user.app_metadata?.role !== "installer") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("jobs")
@@ -18,8 +24,14 @@ export async function GET() {
   return NextResponse.json({ jobs: data ?? [] });
 }
 
-// POST /api/jobs — create a new job (ops/admin use)
+// POST /api/jobs — create a new job (installer only)
 export async function POST(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (user.app_metadata?.role !== "installer") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
   const body = await req.json().catch(() => null);
 
   if (!body?.name || !Array.isArray(body?.phases) || body.phases.length === 0) {
