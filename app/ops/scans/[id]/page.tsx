@@ -54,9 +54,9 @@ export default async function ScanDetailPage({
   const intake = scan.intake_data as IntakeData | null;
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+    <main className="max-w-4xl mx-auto px-6 py-10 space-y-8 w-full">
       <div className="flex items-center gap-3">
-        <Link href="/ops/scans" className="text-sm text-slate-500 hover:text-slate-800">
+        <Link href="/ops/scans" className="text-sm text-slate-500 hover:text-partli-ink">
           ← All scans
         </Link>
         <StatusBadge status={scan.status} />
@@ -73,10 +73,10 @@ export default async function ScanDetailPage({
           Homeowner
         </h2>
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <div><span className="text-slate-500">Name</span><p className="font-medium">{hw?.name ?? "—"}</p></div>
-          <div><span className="text-slate-500">Phone</span><p className="font-medium">{hw?.phone ?? "—"}</p></div>
-          <div><span className="text-slate-500">Email</span><p className="font-medium">{hw?.email ?? "—"}</p></div>
-          <div><span className="text-slate-500">Address</span><p className="font-medium">{hw?.address ?? "—"}</p></div>
+          <div><span className="text-slate-500">Name</span><p className="font-medium text-partli-ink">{hw?.name ?? "—"}</p></div>
+          <div><span className="text-slate-500">Phone</span><p className="font-medium text-partli-ink">{hw?.phone ?? "—"}</p></div>
+          <div><span className="text-slate-500">Email</span><p className="font-medium text-partli-ink">{hw?.email ?? "—"}</p></div>
+          <div><span className="text-slate-500">Address</span><p className="font-medium text-partli-ink">{hw?.address ?? "—"}</p></div>
         </div>
       </section>
 
@@ -94,7 +94,7 @@ export default async function ScanDetailPage({
               ["Windows", room.windows.length],
             ].map(([label, value]) => (
               <div key={label} className="rounded-md bg-slate-50 p-3">
-                <div className="text-xl font-bold text-slate-900">{value}</div>
+                <div className="text-xl font-bold font-mono text-partli-ink">{value}</div>
                 <div className="text-xs text-slate-500 mt-0.5">{label}</div>
               </div>
             ))}
@@ -112,7 +112,7 @@ export default async function ScanDetailPage({
                     <th className="pb-1">Confidence</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 font-mono">
                   {room.walls.map((w, i) => (
                     <tr key={i}>
                       <td className="py-1 text-slate-400">{i + 1}</td>
@@ -176,7 +176,7 @@ export default async function ScanDetailPage({
           <a
             href={scan.usdz_url}
             download
-            className="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline"
+            className="inline-flex items-center gap-2 text-sm text-partli-accent hover:underline"
           >
             ↓ Download USDZ (opens in Quick Look on Mac / iOS)
           </a>
@@ -201,7 +201,7 @@ export default async function ScanDetailPage({
             ].map(([label, value]) => (
               <div key={label}>
                 <span className="text-slate-500 text-xs">{label}</span>
-                <p className="font-medium capitalize">{value ?? "—"}</p>
+                <p className="font-medium text-partli-ink capitalize">{value ?? "—"}</p>
               </div>
             ))}
           </div>
@@ -243,7 +243,7 @@ export default async function ScanDetailPage({
                 ["Openings", pathRoom.openings.length],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-md bg-slate-50 p-2">
-                  <div className="text-lg font-bold text-slate-900">{value}</div>
+                  <div className="text-lg font-bold font-mono text-partli-ink">{value}</div>
                   <div className="text-xs text-slate-500">{label}</div>
                 </div>
               ))}
@@ -254,7 +254,7 @@ export default async function ScanDetailPage({
               <p className="text-xs text-slate-500 mb-1">Door clearances along path</p>
               <div className="flex flex-wrap gap-2">
                 {pathRoom.doors.map((d, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded bg-slate-100 text-xs">
+                  <span key={i} className="px-2 py-0.5 rounded bg-slate-100 text-xs font-mono">
                     Door {i + 1}: {ftIn(d.width_ft)} wide
                   </span>
                 ))}
@@ -263,7 +263,7 @@ export default async function ScanDetailPage({
           )}
           {scan.path_usdz_url && (
             <a href={scan.path_usdz_url} download
-              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline">
+              className="inline-flex items-center gap-2 text-sm text-partli-accent hover:underline">
               ↓ Download path USDZ
             </a>
           )}

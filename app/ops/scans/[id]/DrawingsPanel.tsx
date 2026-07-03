@@ -15,6 +15,14 @@ interface PendingPin {
 const FP_PAD = 2;   // feet of padding around floor plan
 const EL_PAD = 0.5; // feet of padding around wall elevation
 
+// Gauge palette, as raw hex for SVG attributes (no Tailwind inside <svg>)
+const INK = "#10161f";
+const ACCENT = "#007889";       // steel cyan — replaces the old blue (#3b82f6 family)
+const ACCENT_TINT = "#d5f1f6";
+const ACCENT_LINE = "#8fd1da";
+const SLATE_LINE = "#94a3b8";
+const SLATE_WALL = "#1e293b";
+
 // ─── Floor plan SVG ──────────────────────────────────────────────────────────
 
 function FloorPlanSvg({
@@ -57,10 +65,10 @@ function FloorPlanSvg({
           <rect
             x={o.cx - o.width_ft / 2} y={o.cz - o.depth_ft / 2}
             width={o.width_ft} height={o.depth_ft}
-            fill="#e0f2fe" stroke="#7dd3fc" strokeWidth={0.04}
+            fill={ACCENT_TINT} stroke={ACCENT_LINE} strokeWidth={0.04}
           />
           <text x={o.cx} y={o.cz} textAnchor="middle" dominantBaseline="middle"
-            fontSize={0.3} fill="#0369a1" style={{ pointerEvents: "none" }}>
+            fontSize={0.3} fill={ACCENT} style={{ pointerEvents: "none" }}>
             {o.category}
           </text>
         </g>
@@ -75,19 +83,19 @@ function FloorPlanSvg({
       {/* Windows */}
       {plan.windows.map((seg, i) => (
         <line key={i} x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
-          stroke="#3b82f6" strokeWidth={W * 0.6} strokeLinecap="round" strokeDasharray={`${W * 0.4} ${W * 0.2}`} />
+          stroke={ACCENT} strokeWidth={W * 0.6} strokeLinecap="round" strokeDasharray={`${W * 0.4} ${W * 0.2}`} />
       ))}
 
       {/* Doors */}
       {plan.doors.map((seg, i) => (
         <line key={i} x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
-          stroke="#94a3b8" strokeWidth={W * 0.7} strokeLinecap="round" />
+          stroke={SLATE_LINE} strokeWidth={W * 0.7} strokeLinecap="round" />
       ))}
 
       {/* Walls */}
       {plan.walls.map((seg, i) => (
         <line key={i} x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
-          stroke="#1e293b" strokeWidth={W} strokeLinecap="square" />
+          stroke={SLATE_WALL} strokeWidth={W} strokeLinecap="square" />
       ))}
 
       {/* Annotation pins */}
@@ -177,7 +185,7 @@ function WallElevationSvg({
               {/* Door swing arc */}
               <path
                 d={`M ${ex} ${sy(ey_bottom)} A ${el.width_ft} ${el.width_ft} 0 0 1 ${ex + el.width_ft} ${sy(ey_bottom + el.width_ft)}`}
-                fill="none" stroke="#94a3b8" strokeWidth={0.04} strokeDasharray="0.15 0.1"
+                fill="none" stroke={SLATE_LINE} strokeWidth={0.04} strokeDasharray="0.15 0.1"
               />
             </g>
           );
@@ -187,17 +195,17 @@ function WallElevationSvg({
           return (
             <g key={i}>
               <rect x={ex} y={ey_top_svg} width={el.width_ft} height={el.height_ft}
-                fill="#eff6ff" stroke="#3b82f6" strokeWidth={0.05} />
+                fill="#e3f5f8" stroke={ACCENT} strokeWidth={0.05} />
               {/* Window sill */}
               <line x1={ex} y1={sy(ey_bottom)} x2={ex + el.width_ft} y2={sy(ey_bottom)}
-                stroke="#3b82f6" strokeWidth={0.08} />
+                stroke={ACCENT} strokeWidth={0.08} />
               {/* Glazing bars */}
               <line x1={ex + el.width_ft / 2} y1={ey_top_svg}
                 x2={ex + el.width_ft / 2} y2={ey_top_svg + el.height_ft}
-                stroke="#93c5fd" strokeWidth={0.03} />
+                stroke={ACCENT_LINE} strokeWidth={0.03} />
               <line x1={ex} y1={sy(ey_bottom + el.height_ft / 2)}
                 x2={ex + el.width_ft} y2={sy(ey_bottom + el.height_ft / 2)}
-                stroke="#93c5fd" strokeWidth={0.03} />
+                stroke={ACCENT_LINE} strokeWidth={0.03} />
             </g>
           );
         }
@@ -213,10 +221,10 @@ function WallElevationSvg({
         return (
           <g key={i}>
             <rect x={ex} y={ey_top_svg} width={el.width_ft} height={el.height_ft}
-              fill="#e0f2fe" stroke="#7dd3fc" strokeWidth={0.04} />
+              fill={ACCENT_TINT} stroke={ACCENT_LINE} strokeWidth={0.04} />
             <text x={ex + el.width_ft / 2} y={ey_top_svg + el.height_ft / 2}
               textAnchor="middle" dominantBaseline="middle"
-              fontSize={0.28} fill="#0369a1" style={{ pointerEvents: "none" }}>
+              fontSize={0.28} fill={ACCENT} style={{ pointerEvents: "none" }}>
               {el.category}
             </text>
           </g>
@@ -360,9 +368,9 @@ export default function DrawingsPanel({ scanId }: { scanId: string }) {
           <button
             key={t}
             onClick={() => { setTab(t); setPending(null); }}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            className={`px-3 py-1 rounded text-xs font-medium font-mono transition-colors ${
               tab === t
-                ? "bg-slate-900 text-white"
+                ? "bg-partli-primary text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
@@ -405,7 +413,7 @@ export default function DrawingsPanel({ scanId }: { scanId: string }) {
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveAnnotation(); } }}
                 placeholder="Note…"
                 rows={2}
-                className="w-full rounded border border-slate-300 px-2 py-1 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="w-full rounded border border-slate-300 px-2 py-1 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-partli-accent"
               />
               <input
                 value={draftAuthor}
@@ -417,7 +425,7 @@ export default function DrawingsPanel({ scanId }: { scanId: string }) {
                 <button
                   onClick={saveAnnotation}
                   disabled={!draftText.trim() || saving}
-                  className="flex-1 py-1 bg-slate-900 text-white rounded text-xs font-medium disabled:opacity-40"
+                  className="flex-1 py-1 bg-partli-primary text-white rounded text-xs font-medium disabled:opacity-40"
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>

@@ -52,14 +52,14 @@ export default async function JobDetailPage({
   const completedPhases = new Set(Object.keys(byPhase));
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+    <main className="max-w-4xl mx-auto px-6 py-10 space-y-8 w-full">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link href="/ops/jobs" className="text-sm text-slate-500 hover:text-slate-800">
+          <Link href="/ops/jobs" className="text-sm text-slate-500 hover:text-partli-ink">
             ← All jobs
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">{job.name}</h1>
+          <h1 className="text-2xl font-bold text-partli-ink mt-1">{job.name}</h1>
           {job.address && <p className="text-slate-500 text-sm mt-0.5">{job.address}</p>}
         </div>
         <span className={`px-2 py-0.5 rounded text-xs font-medium mt-1 ${
@@ -103,7 +103,7 @@ export default async function JobDetailPage({
             className="rounded-lg border border-slate-200"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h2 className="font-semibold text-slate-900">{phase}</h2>
+              <h2 className="font-semibold text-partli-ink">{phase}</h2>
               {latestScan ? (
                 <div className="flex items-center gap-2">
                   <StatusBadge status={latestScan.status} />
@@ -128,7 +128,7 @@ export default async function JobDetailPage({
                       ["objects", (latestScan.room_data as any).objects?.length ?? 0],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-md bg-slate-50 p-2">
-                        <div className="text-lg font-bold text-slate-900">{value}</div>
+                        <div className="text-lg font-bold font-mono text-partli-ink">{value}</div>
                         <div className="text-xs text-slate-500">{label}</div>
                       </div>
                     ))}
@@ -156,14 +156,14 @@ export default async function JobDetailPage({
                     <a
                       href={latestScan.usdz_url}
                       download
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-partli-accent hover:underline"
                     >
                       ↓ USDZ model
                     </a>
                   )}
                   <Link
                     href={`/ops/scans/${latestScan.id}`}
-                    className="text-sm text-blue-600 hover:underline"
+                    className="text-sm text-partli-accent hover:underline"
                   >
                     Full review →
                   </Link>

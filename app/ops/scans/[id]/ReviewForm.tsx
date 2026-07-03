@@ -78,7 +78,7 @@ export default function ReviewForm({ scanId }: { scanId: string }) {
               ? "e.g. The scan was too dark — please retake with the lights on."
               : "Optional internal note"
           }
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-partli-accent"
         />
       </div>
 
@@ -88,7 +88,7 @@ export default function ReviewForm({ scanId }: { scanId: string }) {
           value={reviewedBy}
           onChange={(e) => setReviewedBy(e.target.value)}
           placeholder="e.g. Alex"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-partli-accent"
         />
       </div>
 
@@ -97,7 +97,7 @@ export default function ReviewForm({ scanId }: { scanId: string }) {
       <button
         type="submit"
         disabled={loading}
-        className="px-5 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors"
+        className="px-5 py-2 rounded-lg bg-partli-primary text-white text-sm font-medium hover:bg-partli-primary-pressed disabled:opacity-50 transition-colors"
       >
         {loading ? "Submitting…" : "Submit Review"}
       </button>

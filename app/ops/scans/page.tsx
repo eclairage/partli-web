@@ -20,10 +20,10 @@ export default async function ScansPage() {
     .returns<Scan[]>();
 
   return (
-    <main className="max-w-5xl mx-auto px-6 py-10">
+    <main className="max-w-5xl mx-auto px-6 py-10 w-full">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Basin — Scans</h1>
-        <span className="text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-partli-ink">Scans</h1>
+        <span className="font-mono text-xs text-partli-muted">
           {scans?.filter((s) => s.status === "pending").length ?? 0} pending
         </span>
       </div>
@@ -48,7 +48,7 @@ export default async function ScansPage() {
               } | null;
               return (
                 <tr key={scan.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-900">
+                  <td className="px-4 py-3 font-medium text-partli-ink">
                     {hw?.name ?? "—"}
                     <div className="text-xs text-slate-400">{hw?.phone}</div>
                   </td>
@@ -66,7 +66,7 @@ export default async function ScansPage() {
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/ops/scans/${scan.id}`}
-                      className="text-blue-600 hover:underline"
+                      className="text-partli-accent hover:underline"
                     >
                       Review →
                     </Link>

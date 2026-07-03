@@ -32,10 +32,10 @@ export default async function JobsPage() {
   }
 
   return (
-    <main className="max-w-5xl mx-auto px-6 py-10">
+    <main className="max-w-5xl mx-auto px-6 py-10 w-full">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Basin — Jobs</h1>
-        <span className="text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-partli-ink">Jobs</h1>
+        <span className="font-mono text-xs text-partli-muted">
           {jobs?.filter((j) => j.status === "active").length ?? 0} active
         </span>
       </div>
@@ -55,17 +55,17 @@ export default async function JobsPage() {
           <tbody className="divide-y divide-slate-100 bg-white">
             {jobs?.map((job) => (
               <tr key={job.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 font-medium text-slate-900">{job.name}</td>
+                <td className="px-4 py-3 font-medium text-partli-ink">{job.name}</td>
                 <td className="px-4 py-3 text-slate-500">{job.address ?? "—"}</td>
-                <td className="px-4 py-3 text-slate-500">{job.phases.length}</td>
-                <td className="px-4 py-3 text-slate-500">{countByJob[job.id] ?? 0}</td>
+                <td className="px-4 py-3 font-mono text-slate-500">{job.phases.length}</td>
+                <td className="px-4 py-3 font-mono text-slate-500">{countByJob[job.id] ?? 0}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[job.status] ?? ""}`}>
                     {job.status}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link href={`/ops/jobs/${job.id}`} className="text-blue-600 hover:underline">
+                  <Link href={`/ops/jobs/${job.id}`} className="text-partli-accent hover:underline">
                     View →
                   </Link>
                 </td>

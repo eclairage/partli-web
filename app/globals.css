@@ -2,25 +2,28 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #10161f;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-plex-mono);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Partli — "Gauge" brand */
+  --color-partli-primary: #26426c;
+  --color-partli-primary-pressed: #112d55;
+  --color-partli-accent: #007889;
+  --color-partli-accent-pressed: #006374;
+  --color-partli-accent-tint: #d5f1f6;
+  --color-partli-ink: #10161f;
+  --color-partli-muted: #51565b;
+  --color-partli-bg: #f5f9fc;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
