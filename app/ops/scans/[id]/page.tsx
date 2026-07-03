@@ -3,6 +3,7 @@ import type { Scan, RoomData, IntakeData } from "@/lib/supabase";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReviewForm from "./ReviewForm";
+import DrawingsPanel from "./DrawingsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +139,11 @@ export default async function ScanDetailPage({
             </div>
           )}
         </section>
+      )}
+
+      {/* Drawings — only rendered when scan has transform data (Path A+) */}
+      {room?.walls?.[0]?.transform && (
+        <DrawingsPanel scanId={id} />
       )}
 
       {/* Photos */}

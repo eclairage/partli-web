@@ -49,6 +49,7 @@ export interface Scan {
   ops_note: string | null;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  annotations: Annotation[];
   homeowners?: Homeowner;
 }
 
@@ -66,6 +67,7 @@ export interface RoomSurface {
   width_ft: number;
   height_ft: number;
   confidence: "high" | "medium" | "low";
+  transform?: number[]; // 16-value column-major 4×4 matrix (Path A+)
 }
 
 export interface RoomObject {
@@ -73,6 +75,17 @@ export interface RoomObject {
   width_ft: number;
   height_ft: number;
   depth_ft: number;
+  transform?: number[]; // 16-value column-major 4×4 matrix (Path A+)
+}
+
+export interface Annotation {
+  id: string;
+  target: string;  // "floor_plan" | "wall_0" | "wall_1" …
+  x: number;       // ft: room X (floor plan) or dist from left edge (elevation)
+  y: number;       // ft: room Z (floor plan) or height from floor (elevation)
+  text: string;
+  author: string;
+  created_at: string;
 }
 
 export const supabase = createClient(
