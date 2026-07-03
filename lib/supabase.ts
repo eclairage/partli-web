@@ -10,6 +10,8 @@ export interface Job {
   address: string | null;
   status: JobStatus;
   phases: string[];
+  ops_note: string | null;
+  completed_at: string | null;
 }
 
 export interface Homeowner {

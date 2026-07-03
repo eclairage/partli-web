@@ -50,11 +50,15 @@ export async function PATCH(
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
-  const allowed = ["name", "address", "status", "phases"];
+  const allowed = ["name", "address", "status", "phases", "ops_note"];
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {
     if (key in body) updates[key] = body[key];
   }
+
+  // Auto-stamp completed_at when marking complete / re-opening
+  if (body.status === "completed") updates.completed_at = new Date().toISOString();
+  if (body.status === "active")    updates.completed_at = null;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "no valid fields to update" }, { status: 400 });

@@ -1,22 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import type { Scan } from "@/lib/supabase";
+import type { Job, Scan } from "@/lib/supabase";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import JobStatusForm from "./JobStatusForm";
+import ScanQuickReview from "./ScanQuickReview";
 
 export const dynamic = "force-dynamic";
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    pending:   "bg-amber-100 text-amber-800",
-    approved:  "bg-green-100 text-green-800",
-    flagged:   "bg-red-100 text-red-800",
-  };
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${styles[status] ?? ""}`}>
-      {status}
-    </span>
-  );
-}
 
 export default async function JobDetailPage({
   params,
@@ -27,7 +16,7 @@ export default async function JobDetailPage({
   const db = supabaseAdmin();
 
   const [jobResult, scansResult] = await Promise.all([
-    db.from("jobs").select("*").eq("id", id).single(),
+    db.from("jobs").select("*").eq("id", id).single<Job>(),
     db
       .from("scans")
       .select("id, created_at, phase, status, photo_urls, usdz_url, room_data")
@@ -50,6 +39,7 @@ export default async function JobDetailPage({
   }
 
   const completedPhases = new Set(Object.keys(byPhase));
+  const approvedCount = allScans.filter((s) => s.status === "approved").length;
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 space-y-8 w-full">
@@ -61,35 +51,60 @@ export default async function JobDetailPage({
           </Link>
           <h1 className="text-2xl font-bold text-partli-ink mt-1">{job.name}</h1>
           {job.address && <p className="text-slate-500 text-sm mt-0.5">{job.address}</p>}
+          {job.completed_at && (
+            <p className="text-xs text-slate-400 mt-0.5">
+              Completed {new Date(job.completed_at).toLocaleDateString()}
+            </p>
+          )}
         </div>
         <span className={`px-2 py-0.5 rounded text-xs font-medium mt-1 ${
-          job.status === "active" ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-500"
+          job.status === "active"    ? "bg-green-100 text-green-800" :
+          job.status === "completed" ? "bg-slate-100 text-slate-600" :
+                                       "bg-slate-100 text-slate-400"
         }`}>
           {job.status}
         </span>
       </div>
 
       {/* Phase progress */}
-      <section className="rounded-lg border border-slate-200 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-4">
-          Phases — {completedPhases.size} of {job.phases.length} scanned
-        </h2>
+      <section className="rounded-lg border border-slate-200 p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Phases
+          </h2>
+          <span className="text-xs font-mono text-slate-400">
+            {completedPhases.size}/{job.phases.length} scanned · {approvedCount} approved
+          </span>
+        </div>
         <div className="flex flex-wrap gap-2">
-          {job.phases.map((phase: string) => (
-            <a
-              key={phase}
-              href={`#phase-${encodeURIComponent(phase)}`}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                completedPhases.has(phase)
-                  ? "bg-green-50 border-green-200 text-green-800"
-                  : "bg-slate-50 border-slate-200 text-slate-500"
-              }`}
-            >
-              {completedPhases.has(phase) ? "✓ " : ""}{phase}
-            </a>
-          ))}
+          {job.phases.map((phase: string) => {
+            const phaseScans = byPhase[phase] ?? [];
+            const latest = phaseScans[phaseScans.length - 1];
+            const scanStatus = latest?.status;
+            return (
+              <a
+                key={phase}
+                href={`#phase-${encodeURIComponent(phase)}`}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  scanStatus === "approved" ? "bg-green-50 border-green-200 text-green-800" :
+                  scanStatus === "flagged"  ? "bg-red-50 border-red-200 text-red-700" :
+                  scanStatus === "pending"  ? "bg-amber-50 border-amber-200 text-amber-700" :
+                                             "bg-slate-50 border-slate-200 text-slate-400"
+                }`}
+              >
+                {scanStatus === "approved" ? "✓ " : scanStatus === "flagged" ? "✗ " : ""}{phase}
+              </a>
+            );
+          })}
         </div>
       </section>
+
+      {/* Ops actions */}
+      <JobStatusForm
+        jobId={job.id}
+        currentStatus={job.status}
+        currentNote={job.ops_note}
+      />
 
       {/* Scans per phase */}
       {job.phases.map((phase: string) => {
@@ -105,8 +120,8 @@ export default async function JobDetailPage({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <h2 className="font-semibold text-partli-ink">{phase}</h2>
               {latestScan ? (
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={latestScan.status} />
+                <div className="flex items-center gap-3">
+                  <ScanQuickReview scanId={latestScan.id} status={latestScan.status} />
                   <span className="text-xs text-slate-400">
                     {new Date(latestScan.created_at).toLocaleDateString()}
                   </span>
@@ -128,7 +143,7 @@ export default async function JobDetailPage({
                       ["objects", (latestScan.room_data as any).objects?.length ?? 0],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-md bg-slate-50 p-2">
-                        <div className="text-lg font-bold font-mono text-partli-ink">{value}</div>
+                        <div className="text-lg font-bold font-mono text-partli-ink">{value ?? "—"}</div>
                         <div className="text-xs text-slate-500">{label}</div>
                       </div>
                     ))}
@@ -168,7 +183,7 @@ export default async function JobDetailPage({
                     Full review →
                   </Link>
                   {scans.length > 1 && (
-                    <span className="text-xs text-slate-400">{scans.length} scans total for this phase</span>
+                    <span className="text-xs text-slate-400">{scans.length} scans for this phase</span>
                   )}
                 </div>
               </div>
@@ -181,15 +196,33 @@ export default async function JobDetailPage({
         );
       })}
 
-      {/* Any untagged scans */}
+      {/* Untagged scans */}
       {byPhase["Untagged"] && (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-600 mb-2">
             Untagged Scans
           </h2>
-          <p className="text-sm text-amber-800">
-            {byPhase["Untagged"].length} scan(s) submitted without a phase label.
-          </p>
+          <div className="space-y-2">
+            {byPhase["Untagged"].map((scan) => (
+              <div key={scan.id} className="flex items-center justify-between">
+                <span className="text-sm text-amber-800">
+                  {new Date(scan.created_at).toLocaleDateString()}
+                  {scan.photo_urls?.length ? ` · ${scan.photo_urls.length} photos` : ""}
+                </span>
+                <Link href={`/ops/scans/${scan.id}`} className="text-sm text-partli-accent hover:underline">
+                  View →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Ops note display (read-only, shown if set) */}
+      {job.ops_note && (
+        <section className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Ops Note</h2>
+          <p className="text-sm text-slate-700">{job.ops_note}</p>
         </section>
       )}
     </main>
