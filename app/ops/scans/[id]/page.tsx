@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReviewForm from "./ReviewForm";
 import DrawingsPanel from "./DrawingsPanel";
+import ConvertToJobForm from "./ConvertToJobForm";
 
 export const dynamic = "force-dynamic";
 
@@ -312,6 +313,23 @@ export default async function ScanDetailPage({
             Review
           </h2>
           <ReviewForm scanId={scan.id} />
+        </section>
+      )}
+
+      {/* Convert to job — approved homeowner scans not yet linked to a job */}
+      {scan.status === "approved" && scan.homeowner_id && !scan.job_id && (
+        <section className="rounded-lg border border-partli-accent/30 bg-partli-accent/5 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-partli-accent mb-1">
+            Convert to Job
+          </h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Create a job for this homeowner and link it to this scan.
+          </p>
+          <ConvertToJobForm
+            scanId={scan.id}
+            defaultName={hw?.name ? `${hw.name} Bathroom` : ""}
+            defaultAddress={hw?.address ?? null}
+          />
         </section>
       )}
     </main>

@@ -123,6 +123,46 @@ export async function approveScan(
   return reviewScan(scanId, { status: "approved", ops_note: "", reviewed_by: "ops" });
 }
 
+// ── Convert scan → job ────────────────────────────────────────────────────────
+
+export async function convertScanToJob(
+  scanId: string,
+  input: { name: string; address: string | null; phases: string[] }
+): Promise<{ job_id: string } | { error: string }> {
+  if (!input.name?.trim()) return { error: "Job name is required" };
+  if (!Array.isArray(input.phases) || input.phases.length === 0)
+    return { error: "At least one phase is required" };
+
+  const db = supabaseAdmin();
+
+  // Create the job
+  const { data: job, error: jobErr } = await db
+    .from("jobs")
+    .insert({
+      name: input.name.trim(),
+      address: input.address ?? null,
+      phases: input.phases,
+      status: "active",
+    })
+    .select("id")
+    .single();
+
+  if (jobErr || !job) {
+    console.error(jobErr);
+    return { error: "Failed to create job" };
+  }
+
+  // Link the scan to the new job
+  const { error: scanErr } = await db
+    .from("scans")
+    .update({ job_id: job.id })
+    .eq("id", scanId);
+
+  if (scanErr) return { error: "Job created but failed to link scan — check Supabase" };
+
+  return { job_id: job.id };
+}
+
 // ── Job management ────────────────────────────────────────────────────────────
 
 export async function updateJobStatus(
