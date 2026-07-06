@@ -81,23 +81,57 @@ function FloorPlanSvg({
           stroke="#cbd5e1" strokeWidth={W * 0.6} strokeLinecap="round" strokeDasharray={`${W} ${W * 0.5}`} />
       ))}
 
-      {/* Windows */}
-      {plan.windows.map((seg, i) => (
-        <line key={i} x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
-          stroke={ACCENT} strokeWidth={W * 0.6} strokeLinecap="round" strokeDasharray={`${W * 0.4} ${W * 0.2}`} />
-      ))}
+      {/* Windows — cyan dashed line with label */}
+      {plan.windows.map((seg, i) => {
+        const mx = (seg.x1 + seg.x2) / 2;
+        const mz = (seg.z1 + seg.z2) / 2;
+        return (
+          <g key={i}>
+            <line x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
+              stroke={ACCENT} strokeWidth={W * 0.7} strokeLinecap="round"
+              strokeDasharray={`${W * 0.4} ${W * 0.15}`} />
+            <text x={mx} y={mz - 0.25} textAnchor="middle" fontSize={0.22} fill={ACCENT}
+              style={{ pointerEvents: "none" }} fontFamily="ui-monospace, monospace">W</text>
+          </g>
+        );
+      })}
 
-      {/* Doors */}
-      {plan.doors.map((seg, i) => (
-        <line key={i} x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
-          stroke={SLATE_LINE} strokeWidth={W * 0.7} strokeLinecap="round" />
-      ))}
+      {/* Doors — orange gap with label */}
+      {plan.doors.map((seg, i) => {
+        const mx = (seg.x1 + seg.x2) / 2;
+        const mz = (seg.z1 + seg.z2) / 2;
+        return (
+          <g key={i}>
+            <line x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
+              stroke="#f97316" strokeWidth={W * 0.8} strokeLinecap="butt" />
+            <text x={mx} y={mz - 0.25} textAnchor="middle" fontSize={0.22} fill="#f97316"
+              style={{ pointerEvents: "none" }} fontFamily="ui-monospace, monospace">D</text>
+          </g>
+        );
+      })}
 
       {/* Walls */}
-      {plan.walls.map((seg, i) => (
-        <line key={i} x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
-          stroke={SLATE_WALL} strokeWidth={W} strokeLinecap="square" />
-      ))}
+      {plan.walls.map((seg, i) => {
+        const mx = (seg.x1 + seg.x2) / 2;
+        const mz = (seg.z1 + seg.z2) / 2;
+        // Perpendicular offset: rotate wall direction 90° to place label inside room
+        const dx = seg.x2 - seg.x1;
+        const dz = seg.z2 - seg.z1;
+        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+        const ox = (-dz / len) * 0.35;
+        const oz = ( dx / len) * 0.35;
+        return (
+          <g key={i}>
+            <line x1={seg.x1} y1={seg.z1} x2={seg.x2} y2={seg.z2}
+              stroke={SLATE_WALL} strokeWidth={W} strokeLinecap="square" />
+            <text x={mx + ox} y={mz + oz} textAnchor="middle" dominantBaseline="middle"
+              fontSize={0.28} fill="#64748b" style={{ pointerEvents: "none" }}
+              fontFamily="ui-monospace, monospace">
+              {i + 1}
+            </text>
+          </g>
+        );
+      })}
 
       {/* Annotation pins */}
       {annotations.map((a, i) => (
