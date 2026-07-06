@@ -54,6 +54,21 @@ export default async function ScanDetailPage({
   const pathRoom = scan.path_room_data as RoomData | null;
   const intake = scan.intake_data as IntakeData | null;
   const initialAnnotations = (scan.annotations as Annotation[]) ?? [];
+
+  // Generate short-lived signed URLs for private storage objects
+  async function signedUrl(rawUrl: string | null): Promise<string | null> {
+    if (!rawUrl) return null;
+    // Extract bucket and path from the Supabase storage URL
+    const match = rawUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)$/);
+    if (!match) return rawUrl;
+    const [, bucket, path] = match;
+    const { data } = await db.storage.from(bucket).createSignedUrl(path, 3600);
+    return data?.signedUrl ?? rawUrl;
+  }
+
+  const usdzSignedUrl = await signedUrl(scan.usdz_url);
+  const pathUsdzSignedUrl = await signedUrl(scan.path_usdz_url);
+
   const initialDrawings =
     room && Array.isArray(room.walls?.[0]?.transform)
       ? computeDrawings(room)
@@ -178,13 +193,13 @@ export default async function ScanDetailPage({
       )}
 
       {/* USDZ */}
-      {scan.usdz_url && (
+      {usdzSignedUrl && (
         <section className="rounded-lg border border-slate-200 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
             3D Model
           </h2>
           <a
-            href={scan.usdz_url}
+            href={usdzSignedUrl}
             download
             className="inline-flex items-center gap-2 text-sm text-partli-accent hover:underline"
           >
@@ -271,8 +286,8 @@ export default async function ScanDetailPage({
               </div>
             </div>
           )}
-          {scan.path_usdz_url && (
-            <a href={scan.path_usdz_url} download
+          {pathUsdzSignedUrl && (
+            <a href={pathUsdzSignedUrl} download
               className="inline-flex items-center gap-2 text-sm text-partli-accent hover:underline">
               ↓ Download path USDZ
             </a>
