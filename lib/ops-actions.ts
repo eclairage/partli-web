@@ -123,6 +123,44 @@ export async function approveScan(
   return reviewScan(scanId, { status: "approved", ops_note: "", reviewed_by: "ops" });
 }
 
+// ── Account management ────────────────────────────────────────────────────────
+
+export async function setInstallerRole(
+  userId: string
+): Promise<{ ok: true } | { error: string }> {
+  const db = supabaseAdmin();
+  const { error } = await db.auth.admin.updateUserById(userId, {
+    app_metadata: { role: "installer" },
+  });
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+export async function removeInstallerRole(
+  userId: string
+): Promise<{ ok: true } | { error: string }> {
+  const db = supabaseAdmin();
+  const { error } = await db.auth.admin.updateUserById(userId, {
+    app_metadata: { role: null },
+  });
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+export async function removeHomeownerRecord(
+  userId: string
+): Promise<{ ok: true } | { error: string }> {
+  const db = supabaseAdmin();
+  // Null out user_id so the homeowner record stays (preserving scan history)
+  // but the account is no longer linked
+  const { error } = await db
+    .from("homeowners")
+    .update({ user_id: null })
+    .eq("user_id", userId);
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
 // ── Convert scan → job ────────────────────────────────────────────────────────
 
 export async function convertScanToJob(
