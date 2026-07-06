@@ -154,13 +154,63 @@ function yawDeg(t: number[]): number {
 
 // ─── Floor plan ──────────────────────────────────────────────────────────────
 
-function buildFloorPlan(room: RoomData): FloorPlan {
-  const walls = room.walls.filter(hasTransform).map(toLineSegment);
-  const doors = room.doors.filter(hasTransform).map(toLineSegment);
-  const windows = room.windows.filter(hasTransform).map(toLineSegment);
-  const openings = room.openings.filter(hasTransform).map(toLineSegment);
+/**
+ * Rotate a 2D point (x, z) by -angle (i.e. undo the given angle).
+ * c = cos(angle), s = sin(angle).
+ *
+ *   x' =  x·c + z·s
+ *   z' = -x·s + z·c
+ */
+function rotate2D(x: number, z: number, c: number, s: number): [number, number] {
+  return [x * c + z * s, -x * s + z * c];
+}
 
-  const objects: ObjectFootprint[] = room.objects.filter(hasTransform).map((o) => {
+function rotateSeg(seg: LineSegment, c: number, s: number): LineSegment {
+  const [x1, z1] = rotate2D(seg.x1, seg.z1, c, s);
+  const [x2, z2] = rotate2D(seg.x2, seg.z2, c, s);
+  return { x1, z1, x2, z2 };
+}
+
+/**
+ * Rotate the floor plan so the longest wall aligns with the X axis.
+ * Walls are undirected, so we normalise the angle to (-π/2, π/2] — whichever
+ * sign rotates the drawing the least.
+ */
+function alignLongestWall(
+  walls: LineSegment[],
+  doors: LineSegment[],
+  windows: LineSegment[],
+  openings: LineSegment[],
+  objects: ObjectFootprint[]
+): { c: number; s: number } {
+  let longestLen = 0;
+  let angle = 0;
+
+  for (const seg of walls) {
+    const dx = seg.x2 - seg.x1;
+    const dz = seg.z2 - seg.z1;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len > longestLen) {
+      longestLen = len;
+      angle = Math.atan2(dz, dx);
+    }
+  }
+
+  // Walls are symmetric under 180° rotation — normalise to (-π/2, π/2]
+  // so we always apply the smallest possible rotation.
+  while (angle > Math.PI / 2) angle -= Math.PI;
+  while (angle <= -Math.PI / 2) angle += Math.PI;
+
+  return { c: Math.cos(angle), s: Math.sin(angle) };
+}
+
+function buildFloorPlan(room: RoomData): FloorPlan {
+  let walls = room.walls.filter(hasTransform).map(toLineSegment);
+  let doors = room.doors.filter(hasTransform).map(toLineSegment);
+  let windows = room.windows.filter(hasTransform).map(toLineSegment);
+  let openings = room.openings.filter(hasTransform).map(toLineSegment);
+
+  let objects: ObjectFootprint[] = room.objects.filter(hasTransform).map((o) => {
     const [cx, , cz] = pos(o.transform);
     return {
       category: o.category,
@@ -172,7 +222,21 @@ function buildFloorPlan(room: RoomData): FloorPlan {
     };
   });
 
-  // Compute bounding box over all XZ points
+  // Rotate the floor plan so the longest wall is horizontal (X-axis aligned).
+  if (walls.length > 0) {
+    const { c, s } = alignLongestWall(walls, doors, windows, openings, objects);
+    walls    = walls.map((seg) => rotateSeg(seg, c, s));
+    doors    = doors.map((seg) => rotateSeg(seg, c, s));
+    windows  = windows.map((seg) => rotateSeg(seg, c, s));
+    openings = openings.map((seg) => rotateSeg(seg, c, s));
+    objects  = objects.map((o) => {
+      const [cx, cz] = rotate2D(o.cx, o.cz, c, s);
+      // Subtract the wall angle from the object's own yaw
+      return { ...o, cx, cz, rotation_deg: o.rotation_deg - Math.atan2(s, c) * 180 / Math.PI };
+    });
+  }
+
+  // Compute bounding box over all rotated XZ points
   const xs: number[] = [];
   const zs: number[] = [];
   for (const seg of [...walls, ...doors, ...windows, ...openings]) {
