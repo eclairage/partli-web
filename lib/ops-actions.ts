@@ -161,6 +161,21 @@ export async function removeHomeownerRecord(
   return { ok: true };
 }
 
+// ── Wall finishes ─────────────────────────────────────────────────────────────
+
+export async function updateWallFinishes(
+  scanId: string,
+  finishes: Record<string, string>
+): Promise<{ ok: true } | { error: string }> {
+  const db = supabaseAdmin();
+  const { error } = await db
+    .from("scans")
+    .update({ wall_finishes: finishes })
+    .eq("id", scanId);
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
 // ── Convert scan → job ────────────────────────────────────────────────────────
 
 export async function convertScanToJob(

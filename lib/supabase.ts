@@ -53,6 +53,7 @@ export interface Scan {
   reviewed_at: string | null;
   reviewed_by: string | null;
   annotations: Annotation[];
+  wall_finishes: Record<string, string> | null;
   homeowners?: Homeowner;
 }
 

@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import ReviewForm from "./ReviewForm";
 import DrawingsPanel from "./DrawingsPanel";
 import ConvertToJobForm from "./ConvertToJobForm";
+import SurfacesPanel from "./SurfacesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +170,27 @@ export default async function ScanDetailPage({
           scanId={id}
           initialDrawings={initialDrawings}
           initialAnnotations={initialAnnotations}
+        />
+      )}
+
+      {/* Surfaces & Finishes — shown whenever we have room data */}
+      {room && (
+        <SurfacesPanel
+          scanId={id}
+          walls={
+            initialDrawings
+              ? initialDrawings.wall_elevations.map((e) => ({
+                  width_ft: e.width_ft,
+                  height_ft: e.height_ft,
+                  elements: e.elements,
+                }))
+              : room.walls.map((w) => ({
+                  width_ft: w.width_ft,
+                  height_ft: w.height_ft,
+                }))
+          }
+          floorAreaSqft={room.floor_area_sqft}
+          initialFinishes={scan.wall_finishes}
         />
       )}
 
