@@ -20,7 +20,7 @@ export interface RawSurface {
   width_ft: number;
   height_ft: number;
   confidence: string;
-  transform: number[]; // 16 values, column-major
+  transform?: number[]; // 16 values, column-major (absent on pre-Path-A scans)
 }
 
 export interface RawObject {
@@ -28,7 +28,7 @@ export interface RawObject {
   width_ft: number;
   height_ft: number;
   depth_ft: number;
-  transform: number[]; // 16 values, column-major
+  transform?: number[]; // 16 values, column-major (absent on pre-Path-A scans)
 }
 
 export interface RoomData {
@@ -95,6 +95,11 @@ export interface Drawings {
 
 const M_TO_FT = 3.28084;
 
+/** Type guard — narrows surfaces/objects to those with transform data (Path A+ scans). */
+function hasTransform<T extends { transform?: number[] }>(s: T): s is T & { transform: number[] } {
+  return Array.isArray(s.transform) && s.transform.length === 16;
+}
+
 /** Position (x, y, z) in metres from a column-major 4×4 transform. */
 function pos(t: number[]): [number, number, number] {
   return [t[12], t[13], t[14]];
@@ -125,7 +130,7 @@ function sub3(
  * Returns the two XZ endpoints of a surface (wall, door, window) in feet.
  * The surface is centred at its transform position; width runs along local X.
  */
-function surfaceEndpoints(s: RawSurface): { p1: [number, number]; p2: [number, number] } {
+function surfaceEndpoints(s: RawSurface & { transform: number[] }): { p1: [number, number]; p2: [number, number] } {
   const [cx, , cz] = pos(s.transform);
   const [ax, , az] = axisX(s.transform);
   const halfW = (s.width_ft / M_TO_FT) / 2; // half-width in metres
@@ -136,7 +141,7 @@ function surfaceEndpoints(s: RawSurface): { p1: [number, number]; p2: [number, n
   };
 }
 
-function toLineSegment(s: RawSurface): LineSegment {
+function toLineSegment(s: RawSurface & { transform: number[] }): LineSegment {
   const { p1, p2 } = surfaceEndpoints(s);
   return { x1: p1[0], z1: p1[1], x2: p2[0], z2: p2[1] };
 }
@@ -150,12 +155,12 @@ function yawDeg(t: number[]): number {
 // ─── Floor plan ──────────────────────────────────────────────────────────────
 
 function buildFloorPlan(room: RoomData): FloorPlan {
-  const walls = room.walls.map(toLineSegment);
-  const doors = room.doors.map(toLineSegment);
-  const windows = room.windows.map(toLineSegment);
-  const openings = room.openings.map(toLineSegment);
+  const walls = room.walls.filter(hasTransform).map(toLineSegment);
+  const doors = room.doors.filter(hasTransform).map(toLineSegment);
+  const windows = room.windows.filter(hasTransform).map(toLineSegment);
+  const openings = room.openings.filter(hasTransform).map(toLineSegment);
 
-  const objects: ObjectFootprint[] = room.objects.map((o) => {
+  const objects: ObjectFootprint[] = room.objects.filter(hasTransform).map((o) => {
     const [cx, , cz] = pos(o.transform);
     return {
       category: o.category,
@@ -233,7 +238,7 @@ function projectOntoWall(
 function buildWallElevations(room: RoomData): WallElevation[] {
   const PLANE_THRESHOLD_M = 0.20; // element centre within 20 cm of wall plane
 
-  return room.walls.map((wall, wallIndex) => {
+  return room.walls.filter(hasTransform).map((wall, wallIndex) => {
     const elements: ElevationElement[] = [];
 
     function tryAdd(
@@ -241,7 +246,7 @@ function buildWallElevations(room: RoomData): WallElevation[] {
       type: ElevationElement["type"],
       category?: string
     ) {
-      for (const s of surfaces) {
+      for (const s of surfaces.filter(hasTransform)) {
         const centre = pos(s.transform);
         const dist = Math.abs(distToWallPlane(wall.transform, centre));
         if (dist > PLANE_THRESHOLD_M) continue;
@@ -270,7 +275,7 @@ function buildWallElevations(room: RoomData): WallElevation[] {
     }
 
     function tryAddObjects(objects: RawObject[]) {
-      for (const o of objects) {
+      for (const o of objects.filter(hasTransform)) {
         const centre = pos(o.transform);
         const dist = Math.abs(distToWallPlane(wall.transform, centre));
         if (dist > o.depth_ft / M_TO_FT / 2 + PLANE_THRESHOLD_M) continue;
