@@ -1,12 +1,14 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin, signedStorageUrl, signedStorageUrls } from "@/lib/supabase";
 import type { Scan, RoomData, IntakeData, Annotation } from "@/lib/supabase";
-import { computeDrawings } from "@/lib/roomplan";
+import { computeDrawings, hasAnyTransform } from "@/lib/roomplan";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReviewForm from "./ReviewForm";
 import DrawingsPanel from "./DrawingsPanel";
 import ConvertToJobForm from "./ConvertToJobForm";
 import SurfacesPanel from "./SurfacesPanel";
+import PhotoGallery from "../../PhotoGallery";
+import UsdzViewer from "../../UsdzViewer";
 
 export const dynamic = "force-dynamic";
 
@@ -57,24 +59,13 @@ export default async function ScanDetailPage({
   const intake = scan.intake_data as IntakeData | null;
   const initialAnnotations = (scan.annotations as Annotation[]) ?? [];
 
-  // Generate short-lived signed URLs for private storage objects
-  async function signedUrl(rawUrl: string | null): Promise<string | null> {
-    if (!rawUrl) return null;
-    // Extract bucket and path from the Supabase storage URL
-    const match = rawUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)$/);
-    if (!match) return rawUrl;
-    const [, bucket, path] = match;
-    const { data } = await db.storage.from(bucket).createSignedUrl(path, 3600);
-    return data?.signedUrl ?? rawUrl;
-  }
-
-  const usdzSignedUrl = await signedUrl(scan.usdz_url);
-  const pathUsdzSignedUrl = await signedUrl(scan.path_usdz_url);
+  const usdzSignedUrl = await signedStorageUrl(db, scan.usdz_url);
+  const pathUsdzSignedUrl = await signedStorageUrl(db, scan.path_usdz_url);
+  const photoSignedUrls = await signedStorageUrls(db, scan.photo_urls);
+  const intakePhotoSignedUrls = await signedStorageUrls(db, intake?.intake_photo_urls);
 
   const initialDrawings =
-    room && Array.isArray(room.walls?.[0]?.transform)
-      ? computeDrawings(room)
-      : null;
+    room && hasAnyTransform(room) ? computeDrawings(room) : null;
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 space-y-8 w-full">
@@ -170,6 +161,10 @@ export default async function ScanDetailPage({
           scanId={id}
           initialDrawings={initialDrawings}
           initialAnnotations={initialAnnotations}
+          totalWallCount={room!.walls.length}
+          room={room!}
+          usdzUrl={usdzSignedUrl}
+          posterUrl={photoSignedUrls[0] ?? null}
         />
       )}
 
@@ -195,39 +190,25 @@ export default async function ScanDetailPage({
       )}
 
       {/* Photos */}
-      {scan.photo_urls && scan.photo_urls.length > 0 && (
+      {photoSignedUrls.length > 0 && (
         <section className="rounded-lg border border-slate-200 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">
-            Fixture Photos ({scan.photo_urls.length})
+            Fixture Photos ({photoSignedUrls.length})
           </h2>
-          <div className="grid grid-cols-3 gap-3">
-            {scan.photo_urls.map((url, i) => (
-              <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={url}
-                  alt={`Fixture photo ${i + 1}`}
-                  className="w-full aspect-square object-cover rounded-lg hover:opacity-90 transition-opacity"
-                />
-              </a>
-            ))}
-          </div>
+          <PhotoGallery
+            photos={photoSignedUrls.map((url, i) => ({ url, alt: `Fixture photo ${i + 1}` }))}
+            columns={3}
+          />
         </section>
       )}
 
-      {/* USDZ */}
-      {usdzSignedUrl && (
+      {/* USDZ — standalone fallback for scans with no drawings panel to embed it in */}
+      {!initialDrawings && usdzSignedUrl && (
         <section className="rounded-lg border border-slate-200 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
             3D Model
           </h2>
-          <a
-            href={usdzSignedUrl}
-            download
-            className="inline-flex items-center gap-2 text-sm text-partli-accent hover:underline"
-          >
-            ↓ Download USDZ (opens in Quick Look on Mac / iOS)
-          </a>
+          <UsdzViewer usdzUrl={usdzSignedUrl} posterUrl={photoSignedUrls[0] ?? null} />
         </section>
       )}
 
@@ -259,18 +240,13 @@ export default async function ScanDetailPage({
               <p className="text-sm mt-0.5">{intake.access_notes}</p>
             </div>
           )}
-          {intake.intake_photo_urls?.length > 0 && (
+          {intakePhotoSignedUrls.length > 0 && (
             <div>
-              <p className="text-xs text-slate-500 mb-2">Intake photos ({intake.intake_photo_urls.length})</p>
-              <div className="grid grid-cols-4 gap-2">
-                {intake.intake_photo_urls.map((url, i) => (
-                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={`Intake photo ${i + 1}`}
-                      className="w-full aspect-square object-cover rounded-lg hover:opacity-90 transition-opacity" />
-                  </a>
-                ))}
-              </div>
+              <p className="text-xs text-slate-500 mb-2">Intake photos ({intakePhotoSignedUrls.length})</p>
+              <PhotoGallery
+                photos={intakePhotoSignedUrls.map((url, i) => ({ url, alt: `Intake photo ${i + 1}` }))}
+                columns={4}
+              />
             </div>
           )}
         </section>

@@ -1,9 +1,11 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin, signedStorageUrl, signedStorageUrls } from "@/lib/supabase";
 import type { Job, Scan } from "@/lib/supabase";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import JobStatusForm from "./JobStatusForm";
 import ScanQuickReview from "./ScanQuickReview";
+import PhotoGallery from "../../PhotoGallery";
+import UsdzViewer from "../../UsdzViewer";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,19 @@ export default async function JobDetailPage({
 
   const job = jobResult.data;
   const allScans = scansResult.data ?? [];
+
+  // Both storage buckets are private — resolve short-lived signed URLs per scan.
+  const signedByScan = new Map(
+    await Promise.all(
+      allScans.map(async (scan) => {
+        const [photoUrls, usdzUrl] = await Promise.all([
+          signedStorageUrls(db, scan.photo_urls),
+          signedStorageUrl(db, scan.usdz_url),
+        ]);
+        return [scan.id, { photoUrls, usdzUrl }] as const;
+      })
+    )
+  );
 
   // Group scans by phase (most recent scan per phase wins display)
   const byPhase: Record<string, Scan[]> = {};
@@ -151,30 +166,22 @@ export default async function JobDetailPage({
                 )}
 
                 {/* Photos */}
-                {latestScan.photo_urls && latestScan.photo_urls.length > 0 && (
-                  <div className="grid grid-cols-4 gap-2">
-                    {latestScan.photo_urls.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={url}
-                          alt={`Photo ${i + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg hover:opacity-90 transition-opacity"
-                        />
-                      </a>
-                    ))}
-                  </div>
+                {(signedByScan.get(latestScan.id)?.photoUrls.length ?? 0) > 0 && (
+                  <PhotoGallery
+                    photos={signedByScan.get(latestScan.id)!.photoUrls.map((url, i) => ({
+                      url,
+                      alt: `Photo ${i + 1}`,
+                    }))}
+                    columns={4}
+                  />
                 )}
 
                 <div className="flex items-center gap-4">
-                  {latestScan.usdz_url && (
-                    <a
-                      href={latestScan.usdz_url}
-                      download
-                      className="text-sm text-partli-accent hover:underline"
-                    >
-                      ↓ USDZ model
-                    </a>
+                  {signedByScan.get(latestScan.id)?.usdzUrl && (
+                    <UsdzViewer
+                      usdzUrl={signedByScan.get(latestScan.id)!.usdzUrl!}
+                      posterUrl={signedByScan.get(latestScan.id)?.photoUrls[0] ?? null}
+                    />
                   )}
                   <Link
                     href={`/ops/scans/${latestScan.id}`}

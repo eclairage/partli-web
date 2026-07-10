@@ -2,8 +2,10 @@
 
 import { useState, useCallback } from "react";
 import type { Drawings, FloorPlan, WallElevation } from "@/lib/roomplan";
-import type { Annotation } from "@/lib/supabase";
+import type { Annotation, RoomData } from "@/lib/supabase";
 import { createAnnotation, deleteAnnotation } from "@/lib/ops-actions";
+import Room3DViewer from "./Room3DViewer";
+import UsdzViewer from "../../UsdzViewer";
 
 interface PendingPin {
   target: string;
@@ -295,24 +297,73 @@ function WallElevationSvg({
   );
 }
 
+// ─── Overview (floor plan + wall elevation thumbnails) ────────────────────────
+
+function OverviewPanel({
+  drawings,
+  onSelectTab,
+}: {
+  drawings: Drawings;
+  onSelectTab: (tab: string) => void;
+}) {
+  const noop = () => {};
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs text-slate-400 mb-1">Floor Plan</p>
+        <button type="button" onClick={() => onSelectTab("floor_plan")} className="block w-full text-left">
+          <FloorPlanSvg plan={drawings.floor_plan} annotations={[]} onClick={noop} />
+        </button>
+      </div>
+      {drawings.wall_elevations.length > 0 && (
+        <div>
+          <p className="text-xs text-slate-400 mb-1">Wall Elevations</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {drawings.wall_elevations.map((e, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onSelectTab(`wall_${i}`)}
+                className="text-left"
+              >
+                <WallElevationSvg elevation={e} annotations={[]} onClick={noop} />
+                <p className="text-xs text-slate-500 mt-1">Wall {i + 1}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export default function DrawingsPanel({
   scanId,
   initialDrawings,
   initialAnnotations,
+  totalWallCount,
+  room,
+  usdzUrl,
+  posterUrl,
 }: {
   scanId: string;
   initialDrawings: Drawings;
   initialAnnotations: Annotation[];
+  totalWallCount?: number;
+  room?: RoomData;
+  usdzUrl?: string | null;
+  posterUrl?: string | null;
 }) {
   const [drawings] = useState<Drawings>(initialDrawings);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
-  const [tab, setTab] = useState("floor_plan");
+  const [tab, setTab] = useState("overview");
   const [pending, setPending] = useState<PendingPin | null>(null);
   const [draftText, setDraftText] = useState("");
   const [draftAuthor, setDraftAuthor] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showAllAnnotations, setShowAllAnnotations] = useState(false);
 
   const handleSvgClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>, target: string, wallHeight?: number) => {
@@ -353,13 +404,27 @@ export default function DrawingsPanel({
     if ("annotations" in result) setAnnotations(result.annotations);
   };
 
-  const tabs = ["floor_plan", ...drawings.wall_elevations.map((_, i) => `wall_${i}`)];
+  const tabs = [
+    "overview",
+    "floor_plan",
+    ...drawings.wall_elevations.map((_, i) => `wall_${i}`),
+    ...(room ? ["room3d"] : []),
+    ...(usdzUrl ? ["usdz"] : []),
+  ];
   const tabLabel = (t: string) =>
-    t === "floor_plan"
+    t === "overview"
+      ? "Overview"
+      : t === "floor_plan"
       ? "Floor Plan"
+      : t === "room3d"
+      ? "3D View"
+      : t === "usdz"
+      ? "3D Model"
       : `Wall ${parseInt(t.split("_")[1]) + 1} (${drawings.wall_elevations[parseInt(t.split("_")[1])].width_ft.toFixed(1)}′)`;
 
   const tabAnnotations = annotations.filter((a) => a.target === tab);
+  const missingWallCount =
+    totalWallCount != null ? totalWallCount - drawings.floor_plan.walls.length : 0;
 
   const currentElevation =
     tab.startsWith("wall_")
@@ -372,6 +437,43 @@ export default function DrawingsPanel({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Drawings</h2>
         <span className="text-xs text-slate-400 italic">Click to annotate</span>
       </div>
+
+      {missingWallCount > 0 && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          {drawings.floor_plan.walls.length} of {totalWallCount} walls have geometry data — older scan format,
+          drawings may be incomplete.
+        </p>
+      )}
+
+      {annotations.length > 0 && (
+        <div className="rounded-lg border border-slate-100 bg-slate-50">
+          <button
+            type="button"
+            onClick={() => setShowAllAnnotations((v) => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-600"
+          >
+            <span>
+              All annotations ({annotations.length})
+            </span>
+            <span>{showAllAnnotations ? "▲" : "▼"}</span>
+          </button>
+          {showAllAnnotations && (
+            <div className="px-3 pb-3 space-y-1.5">
+              {annotations.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => { setTab(a.target); setPending(null); }}
+                  className="w-full text-left flex items-start gap-2 text-xs bg-white rounded-md border border-slate-200 px-2 py-1.5 hover:border-partli-accent"
+                >
+                  <span className="shrink-0 text-slate-400 font-mono">{tabLabel(a.target)}</span>
+                  <span className="text-slate-700 break-words">{a.text}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex gap-1 flex-wrap">
@@ -390,7 +492,13 @@ export default function DrawingsPanel({
         ))}
       </div>
 
-      {/* Drawing + sidebar */}
+      {tab === "overview" ? (
+        <OverviewPanel drawings={drawings} onSelectTab={(t) => { setTab(t); setPending(null); }} />
+      ) : tab === "room3d" ? (
+        room && <Room3DViewer room={room} />
+      ) : tab === "usdz" ? (
+        usdzUrl && <UsdzViewer usdzUrl={usdzUrl} posterUrl={posterUrl} />
+      ) : (
       <div className="flex gap-4 items-start">
         {/* Canvas */}
         <div className="flex-1 relative" style={{ cursor: "crosshair" }}>
@@ -485,6 +593,7 @@ export default function DrawingsPanel({
           </div>
         </div>
       </div>
+      )}
     </section>
   );
 }
