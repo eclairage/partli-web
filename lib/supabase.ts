@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 
 export type ScanStatus = "pending" | "approved" | "flagged";
@@ -121,4 +121,32 @@ export async function getUserFromRequest(req: NextRequest) {
 export async function getUserIdFromRequest(req: NextRequest): Promise<string | null> {
   const user = await getUserFromRequest(req);
   return user?.id ?? null;
+}
+
+/**
+ * Resolves a raw Supabase Storage object URL to a short-lived signed URL.
+ * Both `basin-scans` and `basin-photos` buckets are private, so any URL
+ * stored on a scan (usdz_url, photo_urls, intake_photo_urls) must be signed
+ * before it can be fetched from the browser.
+ */
+export async function signedStorageUrl(
+  db: SupabaseClient,
+  rawUrl: string | null | undefined
+): Promise<string | null> {
+  if (!rawUrl) return null;
+  const match = rawUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)$/);
+  if (!match) return rawUrl;
+  const [, bucket, path] = match;
+  const { data } = await db.storage.from(bucket).createSignedUrl(path, 3600);
+  return data?.signedUrl ?? rawUrl;
+}
+
+/** Batch variant of {@link signedStorageUrl} for photo arrays. */
+export async function signedStorageUrls(
+  db: SupabaseClient,
+  rawUrls: string[] | null | undefined
+): Promise<string[]> {
+  if (!rawUrls || rawUrls.length === 0) return [];
+  const signed = await Promise.all(rawUrls.map((url) => signedStorageUrl(db, url)));
+  return signed.filter((url): url is string => url !== null);
 }

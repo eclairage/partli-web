@@ -93,20 +93,29 @@ export interface Drawings {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const M_TO_FT = 3.28084;
+export const M_TO_FT = 3.28084;
 
 /** Type guard — narrows surfaces/objects to those with transform data (Path A+ scans). */
-function hasTransform<T extends { transform?: number[] }>(s: T): s is T & { transform: number[] } {
+export function hasTransform<T extends { transform?: number[] }>(s: T): s is T & { transform: number[] } {
   return Array.isArray(s.transform) && s.transform.length === 16;
 }
 
+/**
+ * True if at least one wall carries transform data — i.e. drawings can be
+ * computed for at least part of the room. Individual walls/doors/objects
+ * without a transform are simply omitted by `buildFloorPlan`/`buildWallElevations`.
+ */
+export function hasAnyTransform(room: RoomData): boolean {
+  return room.walls.some(hasTransform);
+}
+
 /** Position (x, y, z) in metres from a column-major 4×4 transform. */
-function pos(t: number[]): [number, number, number] {
+export function pos(t: number[]): [number, number, number] {
   return [t[12], t[13], t[14]];
 }
 
 /** Local X axis (col 0) of transform — direction along wall width. */
-function axisX(t: number[]): [number, number, number] {
+export function axisX(t: number[]): [number, number, number] {
   return [t[0], t[1], t[2]];
 }
 
@@ -147,7 +156,7 @@ function toLineSegment(s: RawSurface & { transform: number[] }): LineSegment {
 }
 
 /** Angle (degrees) of the local X axis projected onto the XZ plane. */
-function yawDeg(t: number[]): number {
+export function yawDeg(t: number[]): number {
   const [ax, , az] = axisX(t);
   return (Math.atan2(az, ax) * 180) / Math.PI;
 }
