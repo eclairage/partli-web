@@ -1,7 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase";
-import type { Annotation } from "@/lib/supabase";
+import type { Annotation, Design, DesignLineItem } from "@/lib/supabase";
 import { randomUUID } from "crypto";
 import { sendSms, SMS } from "@/lib/twilio";
 
@@ -236,5 +236,216 @@ export async function updateJobStatus(
   const db = supabaseAdmin();
   const { error } = await db.from("jobs").update(updates).eq("id", jobId);
   if (error) return { error: "update failed" };
+  return { ok: true };
+}
+
+// ── Design / quote authoring ──────────────────────────────────────────────────
+
+const DESIGNS_BUCKET = "basin-designs";
+
+// Create a draft design for an approved scan, copying its homeowner.
+export async function createDesignForScan(
+  scanId: string
+): Promise<{ design_id: string } | { error: string }> {
+  const db = supabaseAdmin();
+
+  const { data: scan, error: scanErr } = await db
+    .from("scans")
+    .select("id, status, homeowner_id")
+    .eq("id", scanId)
+    .single();
+
+  if (scanErr || !scan) return { error: "scan not found" };
+  if (scan.status !== "approved")
+    return { error: "scan must be approved before authoring a design" };
+  if (!scan.homeowner_id)
+    return { error: "scan has no homeowner — cannot author a design" };
+
+  const { data: design, error: designErr } = await db
+    .from("designs")
+    .insert({
+      scan_id: scan.id,
+      homeowner_id: scan.homeowner_id,
+      status: "draft",
+    })
+    .select("id")
+    .single();
+
+  if (designErr || !design) {
+    console.error(designErr);
+    return { error: "failed to create design" };
+  }
+
+  return { design_id: design.id };
+}
+
+// Update whitelisted editable fields on a draft/published design.
+export async function updateDesign(
+  designId: string,
+  input: {
+    title?: string | null;
+    scope_summary?: string | null;
+    line_items?: DesignLineItem[];
+    fixed_price_cents?: number | null;
+    ops_note?: string | null;
+    authored_by?: string | null;
+  }
+): Promise<{ ok: true } | { error: string }> {
+  const updates: Record<string, unknown> = {};
+
+  if ("title" in input) updates.title = input.title ?? null;
+  if ("scope_summary" in input) updates.scope_summary = input.scope_summary ?? null;
+  if ("ops_note" in input) updates.ops_note = input.ops_note ?? null;
+  if ("authored_by" in input) updates.authored_by = input.authored_by ?? null;
+
+  if ("fixed_price_cents" in input) {
+    const cents = input.fixed_price_cents;
+    if (cents != null && (!Number.isFinite(cents) || cents < 0))
+      return { error: "fixed price must be a positive amount" };
+    updates.fixed_price_cents = cents ?? null;
+  }
+
+  if ("line_items" in input) {
+    if (!Array.isArray(input.line_items))
+      return { error: "line_items must be an array" };
+    // Normalize + ensure every item has a stable id.
+    updates.line_items = input.line_items.map((li) => ({
+      id: li.id || randomUUID(),
+      label: (li.label ?? "").trim(),
+      description: li.description?.trim() || null,
+      qty: Number.isFinite(li.qty) ? li.qty : 1,
+      amount_cents: Number.isFinite(li.amount_cents) ? Math.round(li.amount_cents) : 0,
+    }));
+  }
+
+  if (Object.keys(updates).length === 0) return { error: "nothing to update" };
+  updates.updated_at = new Date().toISOString();
+
+  const db = supabaseAdmin();
+  const { error } = await db.from("designs").update(updates).eq("id", designId);
+  if (error) return { error: "update failed" };
+  return { ok: true };
+}
+
+// Mint a signed upload URL for a rendering, plus the canonical stored URL.
+// The client PUTs the file to signed_url, then calls addRenderingUrl(stored_url).
+export async function createRenderingUpload(
+  designId: string,
+  filename: string
+): Promise<{ signed_url: string; stored_url: string } | { error: string }> {
+  const safe = (filename || "rendering").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${designId}/${randomUUID()}-${safe}`;
+
+  const db = supabaseAdmin();
+  const { data, error } = await db.storage
+    .from(DESIGNS_BUCKET)
+    .createSignedUploadUrl(path);
+
+  if (error || !data) {
+    console.error("rendering upload URL error:", error);
+    return { error: "could not create upload URL" };
+  }
+
+  const stored_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${DESIGNS_BUCKET}/${path}`;
+  return { signed_url: data.signedUrl, stored_url };
+}
+
+export async function addRenderingUrl(
+  designId: string,
+  url: string
+): Promise<{ rendering_urls: string[] } | { error: string }> {
+  if (!url?.trim()) return { error: "url is required" };
+  const db = supabaseAdmin();
+
+  const { data: design, error } = await db
+    .from("designs")
+    .select("rendering_urls")
+    .eq("id", designId)
+    .single();
+  if (error || !design) return { error: "design not found" };
+
+  const updated = [...((design.rendering_urls as string[]) ?? []), url];
+  const { error: updateErr } = await db
+    .from("designs")
+    .update({ rendering_urls: updated, updated_at: new Date().toISOString() })
+    .eq("id", designId);
+  if (updateErr) return { error: "failed to attach rendering" };
+  return { rendering_urls: updated };
+}
+
+export async function removeRenderingUrl(
+  designId: string,
+  url: string
+): Promise<{ rendering_urls: string[] } | { error: string }> {
+  const db = supabaseAdmin();
+
+  const { data: design, error } = await db
+    .from("designs")
+    .select("rendering_urls")
+    .eq("id", designId)
+    .single();
+  if (error || !design) return { error: "design not found" };
+
+  const updated = ((design.rendering_urls as string[]) ?? []).filter((u) => u !== url);
+  const { error: updateErr } = await db
+    .from("designs")
+    .update({ rendering_urls: updated, updated_at: new Date().toISOString() })
+    .eq("id", designId);
+  if (updateErr) return { error: "failed to remove rendering" };
+  return { rendering_urls: updated };
+}
+
+// Publish a design to the homeowner. Validates it's presentable, then notifies.
+export async function publishDesign(
+  designId: string
+): Promise<{ ok: true } | { error: string }> {
+  const db = supabaseAdmin();
+
+  const { data: design, error } = await db
+    .from("designs")
+    .select("*, homeowners(phone)")
+    .eq("id", designId)
+    .single<Design>();
+
+  if (error || !design) return { error: "design not found" };
+
+  // Validation gate — a published design must be presentable.
+  if (design.fixed_price_cents == null || design.fixed_price_cents <= 0)
+    return { error: "set a fixed price before publishing" };
+  if (!design.rendering_urls?.length)
+    return { error: "attach at least one rendering before publishing" };
+  if (!design.scope_summary?.trim())
+    return { error: "write a scope summary before publishing" };
+
+  const { error: updateErr } = await db
+    .from("designs")
+    .update({
+      status: "published",
+      published_at: new Date().toISOString(),
+      version: (design.version ?? 1) + (design.published_at ? 1 : 0),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", designId);
+
+  if (updateErr) return { error: "failed to publish" };
+
+  const homeowner = design.homeowners as unknown as { phone: string } | null;
+  if (homeowner?.phone) {
+    await sendSms(homeowner.phone, SMS.designReady()).catch(console.error);
+  }
+
+  return { ok: true };
+}
+
+// Revert a published design to draft for corrections during the pilot.
+export async function unpublishDesign(
+  designId: string
+): Promise<{ ok: true } | { error: string }> {
+  const db = supabaseAdmin();
+  const { error } = await db
+    .from("designs")
+    .update({ status: "draft", updated_at: new Date().toISOString() })
+    .eq("id", designId);
+  if (error) return { error: "failed to unpublish" };
   return { ok: true };
 }

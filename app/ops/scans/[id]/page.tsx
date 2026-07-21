@@ -1,5 +1,5 @@
 import { supabaseAdmin, signedStorageUrl, signedStorageUrls } from "@/lib/supabase";
-import type { Scan, RoomData, IntakeData, Annotation } from "@/lib/supabase";
+import type { Scan, RoomData, IntakeData, Annotation, Design } from "@/lib/supabase";
 import { computeDrawings, hasAnyTransform } from "@/lib/roomplan";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -9,6 +9,7 @@ import ConvertToJobForm from "./ConvertToJobForm";
 import SurfacesPanel from "./SurfacesPanel";
 import PhotoGallery from "../../PhotoGallery";
 import UsdzViewer from "../../UsdzViewer";
+import DesignPanel from "./DesignPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,24 @@ export default async function ScanDetailPage({
   const pathUsdzSignedUrl = await signedStorageUrl(db, scan.path_usdz_url);
   const photoSignedUrls = await signedStorageUrls(db, scan.photo_urls);
   const intakePhotoSignedUrls = await signedStorageUrls(db, intake?.intake_photo_urls);
+
+  // Design / quote for this scan (concierge-authored by Ops)
+  const { data: design } = await db
+    .from("designs")
+    .select("*")
+    .eq("scan_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<Design>();
+
+  const designRenderings = design
+    ? await Promise.all(
+        (design.rendering_urls ?? []).map(async (url) => ({
+          url,
+          signedUrl: (await signedStorageUrl(db, url)) ?? url,
+        }))
+      )
+    : [];
 
   const initialDrawings =
     room && hasAnyTransform(room) ? computeDrawings(room) : null;
@@ -312,6 +331,16 @@ export default async function ScanDetailPage({
           </h2>
           <ReviewForm scanId={scan.id} />
         </section>
+      )}
+
+      {/* Design & quote authoring — approved homeowner scans */}
+      {scan.status === "approved" && scan.homeowner_id && (
+        <DesignPanel
+          scanId={scan.id}
+          design={design ?? null}
+          renderings={designRenderings}
+          defaultTitle={hw?.name ? `${hw.name} Bathroom` : ""}
+        />
       )}
 
       {/* Convert to job — approved homeowner scans not yet linked to a job */}

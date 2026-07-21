@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, getUserFromRequest } from "@/lib/supabase";
 
-const ALLOWED_BUCKETS = ["basin-scans", "basin-photos"];
+const ALLOWED_BUCKETS = ["basin-scans", "basin-photos", "basin-designs"];
 
 // POST /api/storage/sign
 // Body: { bucket: string, path: string }

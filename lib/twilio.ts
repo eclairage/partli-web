@@ -20,4 +20,7 @@ export const SMS = {
 
   scanFlagged: (note: string) =>
     `We weren't able to use your scan. ${note} Reply to this message or open the Basin app to re-scan.`,
+
+  designReady: () =>
+    "Your Basin bathroom design is ready! Open the app to see your design and fixed price, and approve to get started.",
 };

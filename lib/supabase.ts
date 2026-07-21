@@ -3,6 +3,34 @@ import type { NextRequest } from "next/server";
 
 export type ScanStatus = "pending" | "approved" | "flagged";
 export type JobStatus = "active" | "completed" | "archived";
+export type DesignStatus = "draft" | "published" | "approved" | "archived";
+
+export interface DesignLineItem {
+  id: string;
+  label: string;
+  description: string | null;
+  qty: number;
+  amount_cents: number;
+}
+
+export interface Design {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  scan_id: string | null;
+  homeowner_id: string | null;
+  status: DesignStatus;
+  title: string | null;
+  scope_summary: string | null;
+  line_items: DesignLineItem[];
+  fixed_price_cents: number | null;
+  rendering_urls: string[];
+  ops_note: string | null;
+  authored_by: string | null;
+  published_at: string | null;
+  version: number;
+  homeowners?: Homeowner;
+}
 
 export interface Job {
   id: string;
