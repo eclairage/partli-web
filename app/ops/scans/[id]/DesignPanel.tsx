@@ -153,6 +153,8 @@ function DesignEditor({
   const [newTypeName, setNewTypeName] = useState("");
   // Instant local previews for freshly uploaded new-item images (raw url -> objectURL)
   const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({});
+  // Raw text for each item's vendor-price field, so typing isn't reformatted mid-entry.
+  const [vendorPriceStr, setVendorPriceStr] = useState<Record<string, string>>({});
 
   const fixedCents = toCents(priceStr);
   const internalCostCents = items.reduce(
@@ -551,13 +553,16 @@ function DesignEditor({
                           <span className="absolute left-2 top-1.5 text-sm text-slate-400">$</span>
                           <input
                             value={
-                              it.new_vendor_price_cents != null
+                              vendorPriceStr[it.id] ??
+                              (it.new_vendor_price_cents != null
                                 ? dollars(it.new_vendor_price_cents)
-                                : ""
+                                : "")
                             }
-                            onChange={(e) =>
-                              patchItem(it.id, { new_vendor_price_cents: toCents(e.target.value) })
-                            }
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setVendorPriceStr((p) => ({ ...p, [it.id]: v }));
+                              patchItem(it.id, { new_vendor_price_cents: toCents(v) });
+                            }}
                             disabled={locked}
                             placeholder="Vendor price"
                             title="Internal only — not shown to homeowner"
