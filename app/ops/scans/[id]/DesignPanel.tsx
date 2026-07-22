@@ -490,7 +490,7 @@ function DesignEditor({
                         <img
                           src={existingUrl}
                           alt="Existing item"
-                          className="w-full aspect-video object-cover rounded border border-slate-200"
+                          className="w-full aspect-[4/3] object-contain bg-slate-50 rounded border border-slate-200"
                         />
                         {!locked && (
                           <button
@@ -509,7 +509,7 @@ function DesignEditor({
                           onClick={() =>
                             setPickerOpenId(pickerOpenId === it.id ? null : it.id)
                           }
-                          className="w-full aspect-video rounded border-2 border-dashed border-slate-300 text-slate-400 text-xs hover:border-partli-accent hover:text-partli-accent transition-colors"
+                          className="w-full aspect-[4/3] rounded border-2 border-dashed border-slate-300 text-slate-400 text-xs hover:border-partli-accent hover:text-partli-accent transition-colors"
                         >
                           Choose from scan photos
                         </button>
@@ -567,7 +567,7 @@ function DesignEditor({
                           <img
                             src={newUrl}
                             alt="New item"
-                            className="w-full aspect-video object-cover rounded border border-slate-200"
+                            className="w-full aspect-[4/3] object-contain bg-slate-50 rounded border border-slate-200"
                           />
                           {importingId === it.id && (
                             <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded text-[11px] text-slate-600">
@@ -589,7 +589,7 @@ function DesignEditor({
                       ) : (
                         !locked && (
                           <label
-                            className={`mb-2 flex flex-col items-center justify-center w-full aspect-video rounded border-2 border-dashed text-slate-400 text-xs cursor-pointer transition-colors ${
+                            className={`mb-2 flex flex-col items-center justify-center w-full aspect-[4/3] rounded border-2 border-dashed text-slate-400 text-xs cursor-pointer transition-colors ${
                               dragOverId === it.id
                                 ? "border-partli-accent text-partli-accent bg-partli-accent/5"
                                 : "border-slate-300 hover:border-partli-accent hover:text-partli-accent"
