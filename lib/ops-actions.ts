@@ -379,6 +379,46 @@ export async function createItemImageUpload(
   return { signed_url: data.signedUrl, stored_url };
 }
 
+// Import a new-item image from an external URL (e.g. dragged from another tab).
+// Fetched + stored server-side so we own a stable copy and avoid browser CORS.
+export async function importItemImageFromUrl(
+  designId: string,
+  url: string
+): Promise<{ stored_url: string } | { error: string }> {
+  const trimmed = (url ?? "").trim();
+  if (!/^https?:\/\//i.test(trimmed)) return { error: "not a valid image link" };
+
+  let res: Response;
+  try {
+    res = await fetch(trimmed, { redirect: "follow" });
+  } catch {
+    return { error: "could not fetch that image" };
+  }
+  if (!res.ok) return { error: `could not fetch that image (${res.status})` };
+
+  const contentType = (res.headers.get("content-type") || "").split(";")[0].trim();
+  if (!contentType.startsWith("image/")) return { error: "that link isn't an image" };
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0) return { error: "that image was empty" };
+  if (buf.length > 15 * 1024 * 1024) return { error: "image is too large (15MB max)" };
+
+  const ext = contentType.slice("image/".length).replace(/[^a-z0-9]/gi, "") || "jpg";
+  const path = `${designId}/items/${randomUUID()}.${ext}`;
+
+  const db = supabaseAdmin();
+  const { error } = await db.storage
+    .from(DESIGNS_BUCKET)
+    .upload(path, buf, { contentType, upsert: false });
+  if (error) {
+    console.error("item image import error:", error);
+    return { error: "could not save that image" };
+  }
+
+  const stored_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${DESIGNS_BUCKET}/${path}`;
+  return { stored_url };
+}
+
 // ── Item types (reusable, extensible list) ─────────────────────────────────────
 
 export async function listItemTypes(): Promise<

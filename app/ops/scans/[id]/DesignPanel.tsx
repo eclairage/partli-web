@@ -10,10 +10,21 @@ import {
   addRenderingUrl,
   removeRenderingUrl,
   createItemImageUpload,
+  importItemImageFromUrl,
   addItemType,
   publishDesign,
   unpublishDesign,
 } from "@/lib/ops-actions";
+
+// Pull an image URL out of a drag from another browser window.
+function imageUrlFromDrop(dt: DataTransfer): string | null {
+  const uri = (dt.getData("text/uri-list") || dt.getData("text/plain") || "").trim();
+  const first = uri.split(/[\r\n]+/).find((l) => /^https?:\/\//i.test(l));
+  if (first) return first;
+  const html = dt.getData("text/html");
+  const m = html && html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m && /^https?:\/\//i.test(m[1]) ? m[1] : null;
+}
 
 // Renderings are passed as { url (stored), signedUrl (display) } pairs.
 type Rendering = { url: string; signedUrl: string };
@@ -149,6 +160,8 @@ function DesignEditor({
   const [uploadingRendering, setUploadingRendering] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pickerOpenId, setPickerOpenId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
   const [addingTypeFor, setAddingTypeFor] = useState<string | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   // Instant local previews for freshly uploaded new-item images (raw url -> objectURL)
@@ -225,14 +238,9 @@ function DesignEditor({
     router.refresh();
   }
 
-  async function handleItemImageUpload(
-    itemId: string,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  async function uploadItemFile(itemId: string, file: File) {
     setError("");
+    setImportingId(itemId);
     try {
       const signed = await createItemImageUpload(design.id, file.name);
       if ("error" in signed) throw new Error(signed.error);
@@ -244,6 +252,46 @@ function DesignEditor({
     } catch (err) {
       setError(err instanceof Error ? err.message : "upload failed");
     }
+    setImportingId(null);
+  }
+
+  async function handleItemImageUpload(
+    itemId: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) await uploadItemFile(itemId, file);
+  }
+
+  // Drop from another browser window (image URL) or the desktop (a file).
+  async function handleItemImageDrop(itemId: string, e: React.DragEvent) {
+    e.preventDefault();
+    setDragOverId(null);
+    if (locked) return;
+    setError("");
+
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      await uploadItemFile(itemId, file);
+      return;
+    }
+
+    const url = imageUrlFromDrop(e.dataTransfer);
+    if (!url) {
+      setError("Drop an image, or an image dragged from another browser tab.");
+      return;
+    }
+    setImportingId(itemId);
+    const res = await importItemImageFromUrl(design.id, url);
+    if ("error" in res) setError(res.error);
+    else {
+      // Preview with the original URL (already rendering in the source tab);
+      // the server copy gets a signed URL on next refresh.
+      setLocalPreviews((p) => ({ ...p, [res.stored_url]: url }));
+      patchItem(itemId, { new_image_url: res.stored_url });
+    }
+    setImportingId(null);
   }
 
   async function confirmAddType(itemId: string) {
@@ -500,17 +548,64 @@ function DesignEditor({
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
                       New
                     </p>
-                    {newUrl ? (
-                      <div className="relative group mb-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={newUrl}
-                          alt="New item"
-                          className="w-full aspect-video object-cover rounded border border-slate-200"
-                        />
-                        {!locked && (
-                          <label className="absolute bottom-1 right-1 bg-white/90 text-slate-700 rounded px-2 py-0.5 text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                            Replace
+                    {(() => {
+                      const dropProps = locked
+                        ? {}
+                        : {
+                            onDragOver: (e: React.DragEvent) => {
+                              e.preventDefault();
+                              setDragOverId(it.id);
+                            },
+                            onDragLeave: () => setDragOverId((d) => (d === it.id ? null : d)),
+                            onDrop: (e: React.DragEvent) => handleItemImageDrop(it.id, e),
+                          };
+                      const dragRing =
+                        dragOverId === it.id ? "ring-2 ring-partli-accent ring-offset-1" : "";
+                      return newUrl ? (
+                        <div className={`relative group mb-2 rounded ${dragRing}`} {...dropProps}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={newUrl}
+                            alt="New item"
+                            className="w-full aspect-video object-cover rounded border border-slate-200"
+                          />
+                          {importingId === it.id && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded text-[11px] text-slate-600">
+                              Importing…
+                            </div>
+                          )}
+                          {!locked && (
+                            <label className="absolute bottom-1 right-1 bg-white/90 text-slate-700 rounded px-2 py-0.5 text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                              Replace
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleItemImageUpload(it.id, e)}
+                                className="sr-only"
+                              />
+                            </label>
+                          )}
+                        </div>
+                      ) : (
+                        !locked && (
+                          <label
+                            className={`mb-2 flex flex-col items-center justify-center w-full aspect-video rounded border-2 border-dashed text-slate-400 text-xs cursor-pointer transition-colors ${
+                              dragOverId === it.id
+                                ? "border-partli-accent text-partli-accent bg-partli-accent/5"
+                                : "border-slate-300 hover:border-partli-accent hover:text-partli-accent"
+                            }`}
+                            {...dropProps}
+                          >
+                            {importingId === it.id ? (
+                              "Importing…"
+                            ) : (
+                              <>
+                                <span>+ Upload or drop image</span>
+                                <span className="text-[10px] text-slate-400 mt-0.5">
+                                  drag from another browser tab
+                                </span>
+                              </>
+                            )}
                             <input
                               type="file"
                               accept="image/*"
@@ -518,21 +613,9 @@ function DesignEditor({
                               className="sr-only"
                             />
                           </label>
-                        )}
-                      </div>
-                    ) : (
-                      !locked && (
-                        <label className="mb-2 flex items-center justify-center w-full aspect-video rounded border-2 border-dashed border-slate-300 text-slate-400 text-xs cursor-pointer hover:border-partli-accent hover:text-partli-accent transition-colors">
-                          + Upload new item image
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => handleItemImageUpload(it.id, e)}
-                            className="sr-only"
-                          />
-                        </label>
-                      )
-                    )}
+                        )
+                      );
+                    })()}
                     <div className="space-y-2">
                       <input
                         value={it.new_name ?? ""}
