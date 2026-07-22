@@ -809,23 +809,23 @@ function DesignEditor({
         )}
 
         {items.length > 0 && (
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-2 ml-auto">
             <a
               href={`/api/ops/designs/${design.id}/plan.pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-partli-accent hover:underline"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-partli-accent/40 text-sm text-partli-accent hover:bg-partli-accent/5 transition-colors"
             >
-              ↓ Design plan PDF
+              ↓ Homeowner PDF
             </a>
             <a
               href={`/api/ops/designs/${design.id}/plan.pdf?internal=1`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-slate-400 hover:text-slate-600 hover:underline"
-              title="Includes internal vendor prices"
+              title="Includes vendor prices + cost total — internal use only"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 transition-colors"
             >
-              (internal copy)
+              ↓ Internal PDF (with pricing)
             </a>
           </div>
         )}
