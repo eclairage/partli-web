@@ -2,19 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Design, DesignLineItem } from "@/lib/supabase";
+import type { Design, DesignItem } from "@/lib/supabase";
 import {
   createDesignForScan,
   updateDesign,
   createRenderingUpload,
   addRenderingUrl,
   removeRenderingUrl,
+  createItemImageUpload,
+  addItemType,
   publishDesign,
   unpublishDesign,
 } from "@/lib/ops-actions";
 
 // Renderings are passed as { url (stored), signedUrl (display) } pairs.
 type Rendering = { url: string; signedUrl: string };
+// Scan photos the existing item can be picked from.
+type ScanPhoto = { url: string; signedUrl: string };
 
 function dollars(cents: number | null | undefined): string {
   if (cents == null) return "";
@@ -25,16 +29,22 @@ function toCents(input: string): number | null {
   if (!Number.isFinite(n)) return null;
   return Math.round(n * 100);
 }
-function newLineItem(): DesignLineItem {
+function uuid(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : String(Math.random());
+}
+function newDesignItem(item_type = ""): DesignItem {
   return {
-    id:
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : String(Math.random()),
-    label: "",
-    description: null,
-    qty: 1,
-    amount_cents: 0,
+    id: uuid(),
+    item_type,
+    existing_photo_url: null,
+    new_name: null,
+    new_image_url: null,
+    new_vendor_price_cents: null,
+    new_url: null,
+    new_finish: null,
+    new_notes: null,
   };
 }
 
@@ -42,16 +52,21 @@ export default function DesignPanel({
   scanId,
   design,
   renderings,
+  scanPhotos,
+  itemTypes,
+  itemImageSignedUrls,
   defaultTitle,
 }: {
   scanId: string;
   design: Design | null;
   renderings: Rendering[];
+  scanPhotos: ScanPhoto[];
+  itemTypes: string[];
+  itemImageSignedUrls: Record<string, string>;
   defaultTitle: string;
 }) {
   const router = useRouter();
 
-  // ── No design yet — empty state ────────────────────────────────────────────
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState("");
 
@@ -74,8 +89,8 @@ export default function DesignPanel({
           Design &amp; Quote
         </h2>
         <p className="text-xs text-slate-500 mb-4">
-          Attach renderings, build line items, set one fixed price, then publish
-          the design to the homeowner.
+          Designate the items being replaced, attach renderings, set one fixed
+          price, then publish the design to the homeowner.
         </p>
         {createErr && <p className="text-sm text-red-600 mb-2">{createErr}</p>}
         <button
@@ -93,6 +108,9 @@ export default function DesignPanel({
     <DesignEditor
       design={design}
       renderings={renderings}
+      scanPhotos={scanPhotos}
+      itemTypes={itemTypes}
+      itemImageSignedUrls={itemImageSignedUrls}
       defaultTitle={defaultTitle}
     />
   );
@@ -101,10 +119,16 @@ export default function DesignPanel({
 function DesignEditor({
   design,
   renderings,
+  scanPhotos,
+  itemTypes,
+  itemImageSignedUrls,
   defaultTitle,
 }: {
   design: Design;
   renderings: Rendering[];
+  scanPhotos: ScanPhoto[];
+  itemTypes: string[];
+  itemImageSignedUrls: Record<string, string>;
   defaultTitle: string;
 }) {
   const router = useRouter();
@@ -116,49 +140,67 @@ function DesignEditor({
   const [opsNote, setOpsNote] = useState(design.ops_note ?? "");
   const [authoredBy, setAuthoredBy] = useState(design.authored_by ?? "");
   const [priceStr, setPriceStr] = useState(dollars(design.fixed_price_cents));
-  const [items, setItems] = useState<DesignLineItem[]>(design.line_items ?? []);
+  const [items, setItems] = useState<DesignItem[]>(design.items ?? []);
+  const [types, setTypes] = useState<string[]>(itemTypes);
 
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [uploadingRendering, setUploadingRendering] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pickerOpenId, setPickerOpenId] = useState<string | null>(null);
+  const [addingTypeFor, setAddingTypeFor] = useState<string | null>(null);
+  const [newTypeName, setNewTypeName] = useState("");
+  // Instant local previews for freshly uploaded new-item images (raw url -> objectURL)
+  const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({});
 
-  const subtotalCents = items.reduce(
-    (sum, li) => sum + (li.amount_cents || 0) * (li.qty || 1),
+  const fixedCents = toCents(priceStr);
+  const internalCostCents = items.reduce(
+    (sum, it) => sum + (it.new_vendor_price_cents || 0),
     0
   );
-  const fixedCents = toCents(priceStr);
 
-  function patchItem(id: string, patch: Partial<DesignLineItem>) {
-    setItems((prev) => prev.map((li) => (li.id === id ? { ...li, ...patch } : li)));
+  function patchItem(id: string, patch: Partial<DesignItem>) {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   }
 
-  async function save() {
-    setSaving(true);
-    setError("");
-    const res = await updateDesign(design.id, {
+  function existingPhotoSignedUrl(rawUrl: string | null): string | null {
+    if (!rawUrl) return null;
+    return scanPhotos.find((p) => p.url === rawUrl)?.signedUrl ?? rawUrl;
+  }
+  function newImageDisplayUrl(it: DesignItem): string | null {
+    if (!it.new_image_url) return null;
+    return localPreviews[it.new_image_url] ?? itemImageSignedUrls[it.new_image_url] ?? null;
+  }
+
+  function persistPayload() {
+    return {
       title: title.trim() || null,
       scope_summary: scope.trim() || null,
       ops_note: opsNote.trim() || null,
       authored_by: authoredBy.trim() || null,
       fixed_price_cents: fixedCents,
-      line_items: items,
-    });
-    if ("error" in res) {
-      setError(res.error);
-    } else {
+      items,
+    };
+  }
+
+  async function save() {
+    setSaving(true);
+    setError("");
+    const res = await updateDesign(design.id, persistPayload());
+    if ("error" in res) setError(res.error);
+    else {
       setSavedAt(new Date().toLocaleTimeString());
       router.refresh();
     }
     setSaving(false);
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleRenderingUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file
+    e.target.value = "";
     if (!file) return;
-    setUploading(true);
+    setUploadingRendering(true);
     setError("");
     try {
       const signed = await createRenderingUpload(design.id, file.name);
@@ -171,7 +213,7 @@ function DesignEditor({
     } catch (err) {
       setError(err instanceof Error ? err.message : "upload failed");
     }
-    setUploading(false);
+    setUploadingRendering(false);
   }
 
   async function removeRendering(url: string) {
@@ -181,18 +223,46 @@ function DesignEditor({
     router.refresh();
   }
 
+  async function handleItemImageUpload(
+    itemId: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
+    try {
+      const signed = await createItemImageUpload(design.id, file.name);
+      if ("error" in signed) throw new Error(signed.error);
+      const put = await fetch(signed.signed_url, { method: "PUT", body: file });
+      if (!put.ok) throw new Error("upload failed");
+      // Instant preview + set the stored url on the item (persisted on Save).
+      setLocalPreviews((p) => ({ ...p, [signed.stored_url]: URL.createObjectURL(file) }));
+      patchItem(itemId, { new_image_url: signed.stored_url });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "upload failed");
+    }
+  }
+
+  async function confirmAddType(itemId: string) {
+    const name = newTypeName.trim();
+    if (!name) return;
+    const res = await addItemType(name);
+    if ("error" in res) {
+      setError(res.error);
+      return;
+    }
+    const added = res.item_type.name;
+    setTypes((prev) => (prev.includes(added) ? prev : [...prev, added]));
+    patchItem(itemId, { item_type: added });
+    setAddingTypeFor(null);
+    setNewTypeName("");
+  }
+
   async function publish() {
     setBusy(true);
     setError("");
-    // Persist edits first so we publish exactly what's on screen.
-    const saveRes = await updateDesign(design.id, {
-      title: title.trim() || null,
-      scope_summary: scope.trim() || null,
-      ops_note: opsNote.trim() || null,
-      authored_by: authoredBy.trim() || null,
-      fixed_price_cents: fixedCents,
-      line_items: items,
-    });
+    const saveRes = await updateDesign(design.id, persistPayload());
     if ("error" in saveRes) {
       setError(saveRes.error);
       setBusy(false);
@@ -212,7 +282,10 @@ function DesignEditor({
   }
 
   const canPublish =
-    fixedCents != null && fixedCents > 0 && renderings.length > 0 && scope.trim().length > 0;
+    fixedCents != null &&
+    fixedCents > 0 &&
+    scope.trim().length > 0 &&
+    (renderings.length > 0 || items.length > 0);
 
   const input =
     "w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-partli-accent disabled:bg-slate-50 disabled:text-slate-500";
@@ -225,9 +298,7 @@ function DesignEditor({
         </h2>
         <span
           className={`px-2 py-0.5 rounded text-xs font-medium ${
-            published
-              ? "bg-green-100 text-green-800"
-              : "bg-amber-100 text-amber-800"
+            published ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
           }`}
         >
           {design.status}
@@ -238,10 +309,8 @@ function DesignEditor({
       {published && (
         <p className="text-xs text-slate-500">
           Published{" "}
-          {design.published_at
-            ? new Date(design.published_at).toLocaleString()
-            : ""}
-          . Unpublish to make edits.
+          {design.published_at ? new Date(design.published_at).toLocaleString() : ""}. Unpublish
+          to make edits.
         </p>
       )}
 
@@ -272,6 +341,263 @@ function DesignEditor({
         </div>
       </div>
 
+      {/* Items to replace */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Items to replace
+          </label>
+          {!locked && (
+            <button
+              onClick={() => setItems((p) => [...p, newDesignItem()])}
+              className="text-xs text-partli-accent hover:underline"
+            >
+              + Add item
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          {items.map((it) => {
+            const existingUrl = existingPhotoSignedUrl(it.existing_photo_url);
+            const newUrl = newImageDisplayUrl(it);
+            return (
+              <div key={it.id} className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+                {/* Item type + remove */}
+                <div className="flex items-center gap-2">
+                  {addingTypeFor === it.id ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        autoFocus
+                        value={newTypeName}
+                        onChange={(e) => setNewTypeName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && confirmAddType(it.id)}
+                        placeholder="New item type"
+                        className={input}
+                      />
+                      <button
+                        onClick={() => confirmAddType(it.id)}
+                        className="px-3 py-1.5 rounded bg-partli-primary text-white text-xs font-medium hover:bg-partli-primary-pressed"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddingTypeFor(null);
+                          setNewTypeName("");
+                        }}
+                        className="text-xs text-slate-400 hover:text-slate-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={it.item_type}
+                      disabled={locked}
+                      onChange={(e) => {
+                        if (e.target.value === "__new__") {
+                          setAddingTypeFor(it.id);
+                          setNewTypeName("");
+                        } else {
+                          patchItem(it.id, { item_type: e.target.value });
+                        }
+                      }}
+                      className={`${input} flex-1 font-medium`}
+                    >
+                      <option value="">Select item type…</option>
+                      {types.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                      {it.item_type && !types.includes(it.item_type) && (
+                        <option value={it.item_type}>{it.item_type}</option>
+                      )}
+                      {!locked && <option value="__new__">＋ Add new type…</option>}
+                    </select>
+                  )}
+                  {!locked && (
+                    <button
+                      onClick={() => setItems((p) => p.filter((x) => x.id !== it.id))}
+                      className="text-slate-400 hover:text-red-600 text-lg leading-none px-1"
+                      title="Remove item"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Existing */}
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
+                      Existing
+                    </p>
+                    {existingUrl ? (
+                      <div className="relative group">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={existingUrl}
+                          alt="Existing item"
+                          className="w-full aspect-video object-cover rounded border border-slate-200"
+                        />
+                        {!locked && (
+                          <button
+                            onClick={() =>
+                              setPickerOpenId(pickerOpenId === it.id ? null : it.id)
+                            }
+                            className="absolute bottom-1 right-1 bg-white/90 text-slate-700 rounded px-2 py-0.5 text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            Change
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      !locked && (
+                        <button
+                          onClick={() =>
+                            setPickerOpenId(pickerOpenId === it.id ? null : it.id)
+                          }
+                          className="w-full aspect-video rounded border-2 border-dashed border-slate-300 text-slate-400 text-xs hover:border-partli-accent hover:text-partli-accent transition-colors"
+                        >
+                          Choose from scan photos
+                        </button>
+                      )
+                    )}
+                    {pickerOpenId === it.id && !locked && (
+                      <div className="mt-2 grid grid-cols-4 gap-1.5 rounded border border-slate-200 p-2 bg-slate-50">
+                        {scanPhotos.length === 0 && (
+                          <p className="col-span-4 text-[11px] text-slate-400 py-2 text-center">
+                            No scan photos available.
+                          </p>
+                        )}
+                        {scanPhotos.map((p) => (
+                          <button
+                            key={p.url}
+                            onClick={() => {
+                              patchItem(it.id, { existing_photo_url: p.url });
+                              setPickerOpenId(null);
+                            }}
+                            className={`aspect-square rounded overflow-hidden border-2 ${
+                              it.existing_photo_url === p.url
+                                ? "border-partli-accent"
+                                : "border-transparent hover:border-slate-300"
+                            }`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.signedUrl} alt="Scan photo" className="w-full h-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* New */}
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
+                      New
+                    </p>
+                    {newUrl ? (
+                      <div className="relative group mb-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={newUrl}
+                          alt="New item"
+                          className="w-full aspect-video object-cover rounded border border-slate-200"
+                        />
+                        {!locked && (
+                          <label className="absolute bottom-1 right-1 bg-white/90 text-slate-700 rounded px-2 py-0.5 text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                            Replace
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleItemImageUpload(it.id, e)}
+                              className="sr-only"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    ) : (
+                      !locked && (
+                        <label className="mb-2 flex items-center justify-center w-full aspect-video rounded border-2 border-dashed border-slate-300 text-slate-400 text-xs cursor-pointer hover:border-partli-accent hover:text-partli-accent transition-colors">
+                          + Upload new item image
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleItemImageUpload(it.id, e)}
+                            className="sr-only"
+                          />
+                        </label>
+                      )
+                    )}
+                    <div className="space-y-2">
+                      <input
+                        value={it.new_name ?? ""}
+                        onChange={(e) => patchItem(it.id, { new_name: e.target.value })}
+                        disabled={locked}
+                        placeholder="Product name"
+                        className={input}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          value={it.new_finish ?? ""}
+                          onChange={(e) => patchItem(it.id, { new_finish: e.target.value })}
+                          disabled={locked}
+                          placeholder="Finish"
+                          className={input}
+                        />
+                        <div className="relative">
+                          <span className="absolute left-2 top-1.5 text-sm text-slate-400">$</span>
+                          <input
+                            value={
+                              it.new_vendor_price_cents != null
+                                ? dollars(it.new_vendor_price_cents)
+                                : ""
+                            }
+                            onChange={(e) =>
+                              patchItem(it.id, { new_vendor_price_cents: toCents(e.target.value) })
+                            }
+                            disabled={locked}
+                            placeholder="Vendor price"
+                            title="Internal only — not shown to homeowner"
+                            className={`${input} pl-5 text-right`}
+                          />
+                        </div>
+                      </div>
+                      <input
+                        value={it.new_url ?? ""}
+                        onChange={(e) => patchItem(it.id, { new_url: e.target.value })}
+                        disabled={locked}
+                        placeholder="Product URL"
+                        className={input}
+                      />
+                      <textarea
+                        value={it.new_notes ?? ""}
+                        onChange={(e) => patchItem(it.id, { new_notes: e.target.value })}
+                        disabled={locked}
+                        rows={2}
+                        placeholder="Notes"
+                        className={input}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {items.length === 0 && (
+            <p className="text-xs text-slate-400">No items yet. Add each fixture/finish being replaced.</p>
+          )}
+        </div>
+        {items.length > 0 && (
+          <p className="text-[11px] text-slate-400 mt-2 text-right">
+            Internal vendor-cost total:{" "}
+            <span className="font-mono">${dollars(internalCostCents)}</span> (not shown to homeowner)
+          </p>
+        )}
+      </div>
+
       {/* Renderings */}
       <div>
         <label className="block text-xs text-slate-500 mb-2">Renderings</label>
@@ -298,12 +624,12 @@ function DesignEditor({
           ))}
           {!locked && (
             <label className="flex flex-col items-center justify-center aspect-square rounded-lg border-2 border-dashed border-slate-300 text-slate-400 text-xs cursor-pointer hover:border-partli-accent hover:text-partli-accent transition-colors">
-              {uploading ? "Uploading…" : "+ Add rendering"}
+              {uploadingRendering ? "Uploading…" : "+ Add rendering"}
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleUpload}
-                disabled={uploading}
+                onChange={handleRenderingUpload}
+                disabled={uploadingRendering}
                 className="sr-only"
               />
             </label>
@@ -311,107 +637,23 @@ function DesignEditor({
         </div>
       </div>
 
-      {/* Line items */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-xs text-slate-500">Line items</label>
-          {!locked && (
-            <button
-              onClick={() => setItems((p) => [...p, newLineItem()])}
-              className="text-xs text-partli-accent hover:underline"
-            >
-              + Add line item
-            </button>
-          )}
-        </div>
-        <div className="space-y-2">
-          {items.map((li) => (
-            <div key={li.id} className="grid grid-cols-12 gap-2 items-start">
-              <input
-                value={li.label}
-                onChange={(e) => patchItem(li.id, { label: e.target.value })}
-                disabled={locked}
-                placeholder="Item"
-                className={`col-span-3 ${input}`}
-              />
-              <input
-                value={li.description ?? ""}
-                onChange={(e) =>
-                  patchItem(li.id, { description: e.target.value || null })
-                }
-                disabled={locked}
-                placeholder="Description"
-                className={`col-span-5 ${input}`}
-              />
-              <input
-                type="number"
-                min={1}
-                value={li.qty}
-                onChange={(e) =>
-                  patchItem(li.id, { qty: parseInt(e.target.value) || 1 })
-                }
-                disabled={locked}
-                placeholder="Qty"
-                className={`col-span-1 ${input} text-center`}
-              />
-              <div className="col-span-2 relative">
-                <span className="absolute left-2 top-1.5 text-sm text-slate-400">$</span>
-                <input
-                  value={li.amount_cents ? dollars(li.amount_cents) : ""}
-                  onChange={(e) =>
-                    patchItem(li.id, { amount_cents: toCents(e.target.value) ?? 0 })
-                  }
-                  disabled={locked}
-                  placeholder="0.00"
-                  className={`${input} pl-5 text-right`}
-                />
-              </div>
-              {!locked && (
-                <button
-                  onClick={() =>
-                    setItems((p) => p.filter((x) => x.id !== li.id))
-                  }
-                  className="col-span-1 text-slate-400 hover:text-red-600 text-sm py-1"
-                  title="Remove"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-          {items.length === 0 && (
-            <p className="text-xs text-slate-400">No line items yet.</p>
-          )}
-        </div>
-        {items.length > 0 && (
-          <p className="text-xs text-slate-500 mt-2 text-right">
-            Line-item subtotal:{" "}
-            <span className="font-mono">${dollars(subtotalCents)}</span>
-          </p>
-        )}
-      </div>
-
       {/* Fixed price */}
       <div className="rounded-md bg-white border border-slate-200 p-4">
         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
-          Fixed price <span className="text-slate-400 normal-case font-normal">(the one number the homeowner sees)</span>
+          Fixed price{" "}
+          <span className="text-slate-400 normal-case font-normal">
+            (the one number the homeowner sees)
+          </span>
         </label>
-        <div className="flex items-center gap-3">
-          <div className="relative w-40">
-            <span className="absolute left-3 top-2 text-slate-400">$</span>
-            <input
-              value={priceStr}
-              onChange={(e) => setPriceStr(e.target.value)}
-              disabled={locked}
-              placeholder="0.00"
-              className="w-full rounded border border-slate-300 pl-6 pr-3 py-1.5 text-lg font-semibold font-mono text-partli-ink focus:outline-none focus:ring-1 focus:ring-partli-accent disabled:bg-slate-50"
-            />
-          </div>
-          {fixedCents != null && fixedCents !== subtotalCents && items.length > 0 && (
-            <span className="text-xs text-amber-600">
-              differs from subtotal (${dollars(subtotalCents)})
-            </span>
-          )}
+        <div className="relative w-40">
+          <span className="absolute left-3 top-2 text-slate-400">$</span>
+          <input
+            value={priceStr}
+            onChange={(e) => setPriceStr(e.target.value)}
+            disabled={locked}
+            placeholder="0.00"
+            className="w-full rounded border border-slate-300 pl-6 pr-3 py-1.5 text-lg font-semibold font-mono text-partli-ink focus:outline-none focus:ring-1 focus:ring-partli-accent disabled:bg-slate-50"
+          />
         </div>
       </div>
 
@@ -444,7 +686,7 @@ function DesignEditor({
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Actions */}
-      <div className="flex items-center gap-3 pt-1">
+      <div className="flex flex-wrap items-center gap-3 pt-1">
         {!locked ? (
           <>
             <button
@@ -460,15 +702,13 @@ function DesignEditor({
               title={
                 canPublish
                   ? ""
-                  : "Needs a fixed price, at least one rendering, and a scope summary"
+                  : "Needs a fixed price, a scope summary, and at least one item or rendering"
               }
               className="px-5 py-2 rounded-lg bg-partli-primary text-white text-sm font-medium hover:bg-partli-primary-pressed disabled:opacity-50 transition-colors"
             >
               {busy ? "Publishing…" : "Publish to homeowner"}
             </button>
-            {savedAt && (
-              <span className="text-xs text-slate-400">Saved {savedAt}</span>
-            )}
+            {savedAt && <span className="text-xs text-slate-400">Saved {savedAt}</span>}
           </>
         ) : (
           <button
@@ -479,7 +719,34 @@ function DesignEditor({
             {busy ? "Working…" : "Unpublish to edit"}
           </button>
         )}
+
+        {items.length > 0 && (
+          <div className="flex items-center gap-3 ml-auto">
+            <a
+              href={`/api/ops/designs/${design.id}/plan.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-partli-accent hover:underline"
+            >
+              ↓ Design plan PDF
+            </a>
+            <a
+              href={`/api/ops/designs/${design.id}/plan.pdf?internal=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-slate-400 hover:text-slate-600 hover:underline"
+              title="Includes internal vendor prices"
+            >
+              (internal copy)
+            </a>
+          </div>
+        )}
       </div>
+      {!locked && items.length > 0 && (
+        <p className="text-[11px] text-slate-400">
+          Save the draft before generating the PDF so it reflects your latest edits.
+        </p>
+      )}
     </section>
   );
 }

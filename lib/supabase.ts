@@ -13,6 +13,27 @@ export interface DesignLineItem {
   amount_cents: number;
 }
 
+export interface ItemType {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+// A fixture/finish being replaced: the existing item (photo from the scan)
+// and the chosen new item. Vendor price is internal-only.
+export interface DesignItem {
+  id: string;
+  item_type: string;
+  existing_photo_url: string | null;
+  new_name: string | null;
+  new_image_url: string | null;
+  new_vendor_price_cents: number | null;
+  new_url: string | null;
+  new_finish: string | null;
+  new_notes: string | null;
+}
+
 export interface Design {
   id: string;
   created_at: string;
@@ -23,6 +44,7 @@ export interface Design {
   title: string | null;
   scope_summary: string | null;
   line_items: DesignLineItem[];
+  items: DesignItem[];
   fixed_price_cents: number | null;
   rendering_urls: string[];
   ops_note: string | null;

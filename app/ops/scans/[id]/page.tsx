@@ -83,6 +83,32 @@ export default async function ScanDetailPage({
       )
     : [];
 
+  // Photos the existing item can be picked from (fixture + intake), raw + signed.
+  const scanPhotos = [
+    ...(scan.photo_urls ?? []).map((url, i) => ({ url, signedUrl: photoSignedUrls[i] ?? url })),
+    ...(intake?.intake_photo_urls ?? []).map((url, i) => ({
+      url,
+      signedUrl: intakePhotoSignedUrls[i] ?? url,
+    })),
+  ];
+
+  // Item-type list (seeded + Ops-added) for the design item dropdown.
+  const { data: itemTypeRows } = await db
+    .from("item_types")
+    .select("name")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  const itemTypes = (itemTypeRows ?? []).map((r) => r.name as string);
+
+  // Sign new-item images so the panel can display them.
+  const itemImageSignedUrls: Record<string, string> = {};
+  for (const it of design?.items ?? []) {
+    if (it.new_image_url && !itemImageSignedUrls[it.new_image_url]) {
+      itemImageSignedUrls[it.new_image_url] =
+        (await signedStorageUrl(db, it.new_image_url)) ?? it.new_image_url;
+    }
+  }
+
   const initialDrawings =
     room && hasAnyTransform(room) ? computeDrawings(room) : null;
 
@@ -339,6 +365,9 @@ export default async function ScanDetailPage({
           scanId={scan.id}
           design={design ?? null}
           renderings={designRenderings}
+          scanPhotos={scanPhotos}
+          itemTypes={itemTypes}
+          itemImageSignedUrls={itemImageSignedUrls}
           defaultTitle={hw?.name ? `${hw.name} Bathroom` : ""}
         />
       )}

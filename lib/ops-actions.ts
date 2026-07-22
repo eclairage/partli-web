@@ -1,7 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase";
-import type { Annotation, Design, DesignLineItem } from "@/lib/supabase";
+import type { Annotation, Design, DesignItem, ItemType } from "@/lib/supabase";
 import { randomUUID } from "crypto";
 import { sendSms, SMS } from "@/lib/twilio";
 
@@ -285,7 +285,7 @@ export async function updateDesign(
   input: {
     title?: string | null;
     scope_summary?: string | null;
-    line_items?: DesignLineItem[];
+    items?: DesignItem[];
     fixed_price_cents?: number | null;
     ops_note?: string | null;
     authored_by?: string | null;
@@ -305,17 +305,24 @@ export async function updateDesign(
     updates.fixed_price_cents = cents ?? null;
   }
 
-  if ("line_items" in input) {
-    if (!Array.isArray(input.line_items))
-      return { error: "line_items must be an array" };
+  if ("items" in input) {
+    if (!Array.isArray(input.items)) return { error: "items must be an array" };
     // Normalize + ensure every item has a stable id.
-    updates.line_items = input.line_items.map((li) => ({
-      id: li.id || randomUUID(),
-      label: (li.label ?? "").trim(),
-      description: li.description?.trim() || null,
-      qty: Number.isFinite(li.qty) ? li.qty : 1,
-      amount_cents: Number.isFinite(li.amount_cents) ? Math.round(li.amount_cents) : 0,
-    }));
+    updates.items = input.items.map((it) => {
+      const cents = it.new_vendor_price_cents;
+      return {
+        id: it.id || randomUUID(),
+        item_type: (it.item_type ?? "").trim(),
+        existing_photo_url: it.existing_photo_url || null,
+        new_name: it.new_name?.trim() || null,
+        new_image_url: it.new_image_url || null,
+        new_vendor_price_cents:
+          cents != null && Number.isFinite(cents) ? Math.round(cents) : null,
+        new_url: it.new_url?.trim() || null,
+        new_finish: it.new_finish?.trim() || null,
+        new_notes: it.new_notes?.trim() || null,
+      };
+    });
   }
 
   if (Object.keys(updates).length === 0) return { error: "nothing to update" };
@@ -348,6 +355,68 @@ export async function createRenderingUpload(
 
   const stored_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${DESIGNS_BUCKET}/${path}`;
   return { signed_url: data.signedUrl, stored_url };
+}
+
+// Mint a signed upload URL for a new-item image (namespaced under /items).
+export async function createItemImageUpload(
+  designId: string,
+  filename: string
+): Promise<{ signed_url: string; stored_url: string } | { error: string }> {
+  const safe = (filename || "item").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${designId}/items/${randomUUID()}-${safe}`;
+
+  const db = supabaseAdmin();
+  const { data, error } = await db.storage
+    .from(DESIGNS_BUCKET)
+    .createSignedUploadUrl(path);
+
+  if (error || !data) {
+    console.error("item image upload URL error:", error);
+    return { error: "could not create upload URL" };
+  }
+
+  const stored_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${DESIGNS_BUCKET}/${path}`;
+  return { signed_url: data.signedUrl, stored_url };
+}
+
+// ── Item types (reusable, extensible list) ─────────────────────────────────────
+
+export async function listItemTypes(): Promise<
+  { item_types: ItemType[] } | { error: string }
+> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from("item_types")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+    .returns<ItemType[]>();
+  if (error) return { error: "could not load item types" };
+  return { item_types: data ?? [] };
+}
+
+export async function addItemType(
+  name: string
+): Promise<{ item_type: ItemType } | { error: string }> {
+  const clean = (name ?? "").trim();
+  if (!clean) return { error: "type name is required" };
+
+  const db = supabaseAdmin();
+  // Case-insensitive dedupe: reuse an existing type if it already exists.
+  const { data: existing } = await db
+    .from("item_types")
+    .select("*")
+    .ilike("name", clean)
+    .maybeSingle<ItemType>();
+  if (existing) return { item_type: existing };
+
+  const { data, error } = await db
+    .from("item_types")
+    .insert({ name: clean, sort_order: 500 })
+    .select("*")
+    .single<ItemType>();
+  if (error || !data) return { error: "could not add item type" };
+  return { item_type: data };
 }
 
 export async function addRenderingUrl(
@@ -412,8 +481,8 @@ export async function publishDesign(
   // Validation gate — a published design must be presentable.
   if (design.fixed_price_cents == null || design.fixed_price_cents <= 0)
     return { error: "set a fixed price before publishing" };
-  if (!design.rendering_urls?.length)
-    return { error: "attach at least one rendering before publishing" };
+  if (!design.rendering_urls?.length && !design.items?.length)
+    return { error: "add at least one item or rendering before publishing" };
   if (!design.scope_summary?.trim())
     return { error: "write a scope summary before publishing" };
 
