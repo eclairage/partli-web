@@ -16,6 +16,7 @@ export type PlanItem = {
   new_finish: string | null;
   new_url: string | null;
   new_notes: string | null;
+  new_vendor_name: string | null;
   new_vendor_price_cents: number | null;
 };
 
@@ -192,9 +193,15 @@ export default function DesignPlanPdf({
                     <Text style={s.fieldValue}>{it.new_finish}</Text>
                   </View>
                 ) : null}
-                {internal && it.new_vendor_price_cents != null ? (
+                {internal && it.new_vendor_name ? (
                   <View style={s.field}>
                     <Text style={s.fieldLabel}>Vendor</Text>
+                    <Text style={s.fieldValue}>{it.new_vendor_name}</Text>
+                  </View>
+                ) : null}
+                {internal && it.new_vendor_price_cents != null ? (
+                  <View style={s.field}>
+                    <Text style={s.fieldLabel}>Price</Text>
                     <Text style={s.fieldValue}>{money(it.new_vendor_price_cents)}</Text>
                   </View>
                 ) : null}

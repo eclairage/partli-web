@@ -28,6 +28,7 @@ export interface DesignItem {
   existing_photo_url: string | null;
   new_name: string | null;
   new_image_url: string | null;
+  new_vendor_name: string | null;
   new_vendor_price_cents: number | null;
   new_url: string | null;
   new_finish: string | null;

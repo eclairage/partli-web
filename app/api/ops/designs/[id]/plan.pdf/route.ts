@@ -56,6 +56,7 @@ export async function GET(
       new_finish: it.new_finish,
       new_url: it.new_url,
       new_notes: it.new_notes,
+      new_vendor_name: it.new_vendor_name,
       new_vendor_price_cents: it.new_vendor_price_cents,
     }))
   );

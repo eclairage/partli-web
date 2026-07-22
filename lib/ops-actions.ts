@@ -316,6 +316,7 @@ export async function updateDesign(
         existing_photo_url: it.existing_photo_url || null,
         new_name: it.new_name?.trim() || null,
         new_image_url: it.new_image_url || null,
+        new_vendor_name: it.new_vendor_name?.trim() || null,
         new_vendor_price_cents:
           cents != null && Number.isFinite(cents) ? Math.round(cents) : null,
         new_url: it.new_url?.trim() || null,

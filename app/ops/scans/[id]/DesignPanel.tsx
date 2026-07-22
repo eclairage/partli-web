@@ -52,6 +52,7 @@ function newDesignItem(item_type = ""): DesignItem {
     existing_photo_url: null,
     new_name: null,
     new_image_url: null,
+    new_vendor_name: null,
     new_vendor_price_cents: null,
     new_url: null,
     new_finish: null,
@@ -624,12 +625,20 @@ function DesignEditor({
                         placeholder="Product name"
                         className={input}
                       />
+                      <input
+                        value={it.new_finish ?? ""}
+                        onChange={(e) => patchItem(it.id, { new_finish: e.target.value })}
+                        disabled={locked}
+                        placeholder="Finish"
+                        className={input}
+                      />
                       <div className="grid grid-cols-2 gap-2">
                         <input
-                          value={it.new_finish ?? ""}
-                          onChange={(e) => patchItem(it.id, { new_finish: e.target.value })}
+                          value={it.new_vendor_name ?? ""}
+                          onChange={(e) => patchItem(it.id, { new_vendor_name: e.target.value })}
                           disabled={locked}
-                          placeholder="Finish"
+                          placeholder="Vendor (internal)"
+                          title="Internal only — not shown to homeowner"
                           className={input}
                         />
                         <div className="relative">
